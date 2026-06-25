@@ -1,0 +1,21 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Rider/VS
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Secrets
+appsettings.*.local.json
+*.env
+.env
+
+## EF Core
+*.db
+
+## Logs locales
+*.log

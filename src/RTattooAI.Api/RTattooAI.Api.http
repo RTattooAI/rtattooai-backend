@@ -1,0 +1,6 @@
+@RTattooAI.Api_HostAddress = http://localhost:5155
+
+GET {{RTattooAI.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

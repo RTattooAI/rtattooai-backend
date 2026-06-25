@@ -1,0 +1,108 @@
+using Moq;
+using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Dtos.Ia;
+using RTattooAI.Application.Exceptions;
+using RTattooAI.Application.Services;
+using RTattooAI.Domain.Entities;
+using Xunit;
+
+namespace RTattooAI.Application.Tests.Services;
+
+public class CatalogServiceTests
+{
+    private readonly Mock<ITatuajeCatalogoRepository> _tatuajeCatalogoRepository = new();
+    private readonly Mock<IBandaCriminalRepository> _bandaCriminalRepository = new();
+    private readonly Mock<IBlobStorage> _blobStorage = new();
+    private readonly Mock<IIaServiceClient> _iaServiceClient = new();
+    private readonly CatalogService _sut;
+
+    public CatalogServiceTests()
+    {
+        _blobStorage.Setup(b => b.GetReadUrl(It.IsAny<string>(), It.IsAny<TimeSpan>()))
+            .Returns<string, TimeSpan>((path, _) => $"https://blob.test/{path}");
+
+        _sut = new CatalogService(_tatuajeCatalogoRepository.Object, _bandaCriminalRepository.Object, _blobStorage.Object, _iaServiceClient.Object);
+    }
+
+    private static MemoryStream CreateImageStream(int sizeBytes = 100) => new(new byte[sizeBytes]);
+
+    [Fact]
+    public async Task EnrollAsync_ThrowsInvalidImageException_WhenContentTypeIsNotAllowed()
+    {
+        await Assert.ThrowsAsync<InvalidImageException>(() =>
+            _sut.EnrollAsync(Guid.NewGuid(), CreateImageStream(), "file.txt", "text/plain", 100, "Los Pulpos"));
+
+        _tatuajeCatalogoRepository.Verify(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()), Times.Never);
+        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsync_ThrowsInvalidImageException_WhenBandIsEmpty()
+    {
+        await Assert.ThrowsAsync<InvalidImageException>(() =>
+            _sut.EnrollAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 100, "   "));
+
+        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsync_PersistsTatuajeCatalogo_AndReturnsDto_WhenValid()
+    {
+        var usuarioId = Guid.NewGuid();
+        var banda = new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Los Pulpos" };
+
+        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), "Los Pulpos", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnrollResultDto("tat_00890", "Los Pulpos"));
+        _bandaCriminalRepository.Setup(r => r.GetOrCreateByNombreAsync("Los Pulpos", usuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(banda);
+
+        TatuajeCatalogo? captured = null;
+        _tatuajeCatalogoRepository.Setup(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()))
+            .Callback<TatuajeCatalogo, CancellationToken>((t, _) => captured = t)
+            .Returns(Task.CompletedTask);
+
+        var dto = await _sut.EnrollAsync(usuarioId, CreateImageStream(), "file.jpg", "image/jpeg", 100, "Los Pulpos");
+
+        Assert.NotNull(captured);
+        Assert.Equal("tat_00890", captured!.Codigo);
+        Assert.Equal(banda.Id, captured.BandaId);
+        Assert.Equal(usuarioId, captured.RegistradoPorId);
+        Assert.False(captured.Validado);
+        Assert.Equal("carga_manual", captured.Fuente);
+
+        Assert.Equal("tat_00890", dto.CatalogId);
+        Assert.Equal("Los Pulpos", dto.Band);
+        Assert.False(dto.Validated);
+        Assert.Equal(usuarioId, dto.AddedBy);
+        _tatuajeCatalogoRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_ReturnsMappedCatalogItems()
+    {
+        var banda = new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Barrio 18" };
+        var tatuaje = new TatuajeCatalogo
+        {
+            Id = Guid.NewGuid(),
+            Codigo = "tat_00001",
+            BandaId = banda.Id,
+            Banda = banda,
+            ImagenUrl = "catalogo/1/original.jpg",
+            ImagenHash = "hash",
+            Fuente = "carga_manual",
+            Validado = true,
+            RegistradoPorId = Guid.NewGuid()
+        };
+
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([tatuaje]);
+
+        var items = await _sut.GetAllAsync();
+
+        var item = Assert.Single(items);
+        Assert.Equal("tat_00001", item.CatalogId);
+        Assert.Equal("Barrio 18", item.Band);
+        Assert.Equal("https://blob.test/catalogo/1/original.jpg", item.ImageUrl);
+        Assert.True(item.Validated);
+    }
+}

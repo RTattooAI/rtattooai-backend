@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RTattooAI.Api/RTattooAI.Api.csproj" />
+    <Project Path="src/RTattooAI.Application/RTattooAI.Application.csproj" />
+    <Project Path="src/RTattooAI.Domain/RTattooAI.Domain.csproj" />
+    <Project Path="src/RTattooAI.Infrastructure/RTattooAI.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RTattooAI.Application.Tests/RTattooAI.Application.Tests.csproj" />
+  </Folder>
+</Solution>
