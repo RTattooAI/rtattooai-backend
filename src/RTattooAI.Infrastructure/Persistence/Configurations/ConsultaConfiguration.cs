@@ -19,6 +19,8 @@ public class ConsultaConfiguration : IEntityTypeConfiguration<Consulta>
         builder.Property(c => c.ImagenOrigHash).HasMaxLength(128);
         builder.Property(c => c.ModelVersion).HasMaxLength(200);
         builder.Property(c => c.Notas).HasMaxLength(1000);
+        builder.Property(c => c.PersonaNombre).HasMaxLength(200);
+        builder.Property(c => c.PersonaDocumento).HasMaxLength(20);
         builder.Property(c => c.Estado).HasConversion<string>().HasMaxLength(20);
 
         builder.HasIndex(c => c.Codigo).IsUnique();

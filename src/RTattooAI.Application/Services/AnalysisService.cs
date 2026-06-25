@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
 using RTattooAI.Application.Dtos.Analyses;
+using RTattooAI.Application.Dtos.Catalog;
+using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Validation;
 using RTattooAI.Domain.Entities;
 using RTattooAI.Domain.Enums;
@@ -11,12 +13,14 @@ namespace RTattooAI.Application.Services;
 
 public class AnalysisService : IAnalysisService
 {
+    private const string FuenteDeteccionAnalisis = "deteccion_analisis";
     private static readonly TimeSpan ImageUrlValidity = TimeSpan.FromHours(1);
 
     private readonly IConsultaRepository _consultaRepository;
     private readonly ITatuajeCatalogoRepository _tatuajeCatalogoRepository;
     private readonly IBlobStorage _blobStorage;
     private readonly IIaServiceClient _iaServiceClient;
+    private readonly IImageCropper _imageCropper;
     private readonly ILogger<AnalysisService> _logger;
 
     public AnalysisService(
@@ -24,16 +28,27 @@ public class AnalysisService : IAnalysisService
         ITatuajeCatalogoRepository tatuajeCatalogoRepository,
         IBlobStorage blobStorage,
         IIaServiceClient iaServiceClient,
+        IImageCropper imageCropper,
         ILogger<AnalysisService> logger)
     {
         _consultaRepository = consultaRepository;
         _tatuajeCatalogoRepository = tatuajeCatalogoRepository;
         _blobStorage = blobStorage;
         _iaServiceClient = iaServiceClient;
+        _imageCropper = imageCropper;
         _logger = logger;
     }
 
-    public async Task<AnalysisDto> CreateAsync(Guid usuarioId, Stream imageStream, string fileName, string contentType, long contentLength, CancellationToken cancellationToken = default)
+    public async Task<AnalysisDto> CreateAsync(
+        Guid usuarioId,
+        Stream imageStream,
+        string fileName,
+        string contentType,
+        long contentLength,
+        string? personName = null,
+        string? documentId = null,
+        string? notes = null,
+        CancellationToken cancellationToken = default)
     {
         ImageValidator.EnsureValid(contentType, contentLength);
 
@@ -59,7 +74,10 @@ public class AnalysisService : IAnalysisService
             ImagenOrigUrl = blobPath,
             ImagenOrigHash = hash,
             Estado = AnalysisStatus.Processing,
-            FechaConsulta = DateTime.UtcNow
+            FechaConsulta = DateTime.UtcNow,
+            PersonaNombre = NullIfBlank(personName),
+            PersonaDocumento = NullIfBlank(documentId),
+            Notas = NullIfBlank(notes)
         };
 
         await _consultaRepository.AddAsync(consulta, cancellationToken);
@@ -148,8 +166,77 @@ public class AnalysisService : IAnalysisService
                 ToContractStatus(consulta.Estado),
                 consulta.FechaConsulta,
                 topMatch?.Banda,
-                topMatch?.Similitud);
+                topMatch?.Similitud,
+                consulta.PersonaNombre,
+                consulta.PersonaDocumento);
         }).ToList();
+    }
+
+    public async Task<List<CatalogItemDto>?> EnrollDetectionsAsync(Guid usuarioId, Guid analysisId, IReadOnlyList<Guid> detectionIds, CancellationToken cancellationToken = default)
+    {
+        if (detectionIds.Count == 0)
+        {
+            throw new InvalidRequestException("Debe seleccionar al menos una detección para agregar al catálogo.");
+        }
+
+        var consulta = await _consultaRepository.GetByIdAsync(analysisId, usuarioId, cancellationToken);
+        if (consulta is null)
+        {
+            return null;
+        }
+
+        var detecciones = consulta.Detecciones.Where(d => detectionIds.Contains(d.Id)).ToList();
+        if (detecciones.Count == 0)
+        {
+            throw new InvalidRequestException("Las detecciones indicadas no pertenecen a este análisis.");
+        }
+
+        var originalBytes = await _blobStorage.DownloadAsync(consulta.ImagenOrigUrl, cancellationToken);
+
+        var results = new List<CatalogItemDto>();
+        foreach (var deteccion in detecciones)
+        {
+            var cropBytes = _imageCropper.CropToPng(originalBytes, deteccion.BboxX, deteccion.BboxY, deteccion.BboxWidth, deteccion.BboxHeight);
+            var cropHash = Convert.ToHexString(SHA256.HashData(cropBytes)).ToLowerInvariant();
+
+            using var enrollStream = new MemoryStream(cropBytes);
+            var enrollResult = await _iaServiceClient.EnrollAsync(enrollStream, $"{deteccion.Id}.png", "image/png", string.Empty, cancellationToken);
+
+            var tatuajeId = Guid.NewGuid();
+            var blobPath = $"catalogo/{tatuajeId}/original.png";
+            using var uploadStream = new MemoryStream(cropBytes);
+            await _blobStorage.UploadAsync(blobPath, uploadStream, "image/png", cancellationToken);
+
+            var tatuaje = new TatuajeCatalogo
+            {
+                Id = tatuajeId,
+                Codigo = enrollResult.CatalogId,
+                BandaId = null,
+                ConsultaOrigenId = consulta.Id,
+                ImagenUrl = blobPath,
+                ImagenHash = cropHash,
+                Fuente = FuenteDeteccionAnalisis,
+                Validado = false,
+                FechaRegistro = DateTime.UtcNow,
+                RegistradoPorId = usuarioId
+            };
+
+            await _tatuajeCatalogoRepository.AddAsync(tatuaje, cancellationToken);
+
+            results.Add(new CatalogItemDto(
+                tatuaje.Codigo,
+                null,
+                _blobStorage.GetReadUrl(tatuaje.ImagenUrl, ImageUrlValidity),
+                tatuaje.Fuente,
+                tatuaje.RegistradoPorId,
+                tatuaje.FechaRegistro,
+                tatuaje.Validado,
+                tatuaje.ConsultaOrigenId));
+        }
+
+        await _tatuajeCatalogoRepository.SaveChangesAsync(cancellationToken);
+
+        return results;
     }
 
     private async Task<AnalysisDto> BuildDtoAsync(Consulta consulta, CancellationToken cancellationToken)
@@ -163,6 +250,7 @@ public class AnalysisService : IAnalysisService
             : _blobStorage.GetReadUrl(consulta.ImagenMiniaturaUrl, ImageUrlValidity);
 
         var detections = consulta.Detecciones.Select(d => new DetectionDto(
+            d.Id,
             new BboxDto(d.BboxX, d.BboxY, d.BboxWidth, d.BboxHeight),
             d.Confianza,
             d.Verdict == Verdict.Match ? "match" : "no_match",
@@ -187,8 +275,13 @@ public class AnalysisService : IAnalysisService
             consulta.ModelVersion,
             consulta.TiempoProcMs,
             detections,
-            Disclaimers.AnalysisDisclaimer);
+            Disclaimers.AnalysisDisclaimer,
+            consulta.PersonaNombre,
+            consulta.PersonaDocumento,
+            consulta.Notas);
     }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string ToContractStatus(AnalysisStatus status) => status switch
     {

@@ -6,4 +6,6 @@ public record AnalysisSummaryDto(
     string Status,
     DateTime CreatedAt,
     string? TopBand,
-    double? TopSimilarity);
+    double? TopSimilarity,
+    string? PersonName,
+    string? DocumentId);

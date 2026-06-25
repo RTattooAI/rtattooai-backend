@@ -25,11 +25,17 @@ public class TatuajeCatalogoConfiguration : IEntityTypeConfiguration<TatuajeCata
         builder.HasOne(t => t.Banda)
             .WithMany(b => b.TatuajesCatalogo)
             .HasForeignKey(t => t.BandaId)
+            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(t => t.RegistradoPor)
             .WithMany(u => u.TatuajesRegistrados)
             .HasForeignKey(t => t.RegistradoPorId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(t => t.ConsultaOrigen)
+            .WithMany()
+            .HasForeignKey(t => t.ConsultaOrigenId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

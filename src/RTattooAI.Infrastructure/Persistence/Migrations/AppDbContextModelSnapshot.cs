@@ -25,7 +25,6 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.BandaCriminal", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Alias")
@@ -71,7 +70,6 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.Coincidencia", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Banda")
@@ -104,7 +102,6 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.Consulta", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Codigo")
@@ -151,6 +148,14 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<string>("PersonaDocumento")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PersonaNombre")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<int?>("TiempoProcMs")
                         .HasColumnType("int");
 
@@ -170,7 +175,6 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.Deteccion", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("BboxHeight")
@@ -206,7 +210,6 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.Rol", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Descripcion")
@@ -235,16 +238,18 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.TatuajeCatalogo", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("BandaId")
+                    b.Property<Guid?>("BandaId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Codigo")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid?>("ConsultaOrigenId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Descripcion")
                         .HasMaxLength(500)
@@ -288,6 +293,8 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.HasIndex("Codigo")
                         .IsUnique();
 
+                    b.HasIndex("ConsultaOrigenId");
+
                     b.HasIndex("RegistradoPorId");
 
                     b.ToTable("TatuajesCatalogo", (string)null);
@@ -296,7 +303,6 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RTattooAI.Domain.Entities.Usuario", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Dependencia")
@@ -391,8 +397,12 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.HasOne("RTattooAI.Domain.Entities.BandaCriminal", "Banda")
                         .WithMany("TatuajesCatalogo")
                         .HasForeignKey("BandaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("RTattooAI.Domain.Entities.Consulta", "ConsultaOrigen")
+                        .WithMany()
+                        .HasForeignKey("ConsultaOrigenId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("RTattooAI.Domain.Entities.Usuario", "RegistradoPor")
                         .WithMany("TatuajesRegistrados")
@@ -401,6 +411,8 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Banda");
+
+                    b.Navigation("ConsultaOrigen");
 
                     b.Navigation("RegistradoPor");
                 });

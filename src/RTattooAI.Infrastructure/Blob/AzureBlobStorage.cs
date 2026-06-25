@@ -30,6 +30,13 @@ public class AzureBlobStorage : IBlobStorage
             cancellationToken: cancellationToken);
     }
 
+    public async Task<byte[]> DownloadAsync(string blobPath, CancellationToken cancellationToken = default)
+    {
+        var blobClient = _container.GetBlobClient(blobPath);
+        var result = await blobClient.DownloadContentAsync(cancellationToken);
+        return result.Value.Content.ToArray();
+    }
+
     public string GetReadUrl(string blobPath, TimeSpan validFor)
     {
         var blobClient = _container.GetBlobClient(blobPath);

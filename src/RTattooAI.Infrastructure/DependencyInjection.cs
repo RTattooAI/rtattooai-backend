@@ -5,6 +5,7 @@ using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Services;
 using RTattooAI.Infrastructure.Blob;
 using RTattooAI.Infrastructure.IaService;
+using RTattooAI.Infrastructure.Imaging;
 using RTattooAI.Infrastructure.Persistence;
 using RTattooAI.Infrastructure.Persistence.Repositories;
 using RTattooAI.Infrastructure.Security;
@@ -29,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<IAnalysisService, AnalysisService>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton<IBlobStorage, AzureBlobStorage>();
+        services.AddSingleton<IImageCropper, ImageSharpCropper>();
 
         var iaServiceBaseUrl = configuration["IaService:BaseUrl"]
             ?? throw new InvalidOperationException("IaService:BaseUrl no está configurado.");

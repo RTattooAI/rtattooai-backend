@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Dtos.Analyses;
 using RTattooAI.Application.Exceptions;
 
 namespace RTattooAI.Api.Controllers;
@@ -18,17 +19,40 @@ public class AnalysesController : ControllerBase
 
     [HttpPost]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> Create(IFormFile image, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create(
+        IFormFile image,
+        [FromForm] string? personName,
+        [FromForm] string? documentId,
+        [FromForm] string? notes,
+        CancellationToken cancellationToken)
     {
         var usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         try
         {
             using var stream = image.OpenReadStream();
-            var result = await _analysisService.CreateAsync(usuarioId, stream, image.FileName, image.ContentType, image.Length, cancellationToken);
+            var result = await _analysisService.CreateAsync(
+                usuarioId, stream, image.FileName, image.ContentType, image.Length,
+                personName, documentId, notes, cancellationToken);
             return StatusCode(StatusCodes.Status201Created, result);
         }
         catch (InvalidImageException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/enroll")]
+    public async Task<IActionResult> EnrollDetections(Guid id, [FromBody] EnrollDetectionsRequestDto request, CancellationToken cancellationToken)
+    {
+        var usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+        try
+        {
+            var result = await _analysisService.EnrollDetectionsAsync(usuarioId, id, request.DetectionIds, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (InvalidRequestException ex)
         {
             return BadRequest(new { error = ex.Message });
         }

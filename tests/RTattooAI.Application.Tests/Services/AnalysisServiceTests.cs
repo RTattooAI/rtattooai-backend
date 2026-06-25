@@ -15,6 +15,7 @@ public class AnalysisServiceTests
     private readonly Mock<ITatuajeCatalogoRepository> _tatuajeCatalogoRepository = new();
     private readonly Mock<IBlobStorage> _blobStorage = new();
     private readonly Mock<IIaServiceClient> _iaServiceClient = new();
+    private readonly Mock<IImageCropper> _imageCropper = new();
     private readonly AnalysisService _sut;
 
     public AnalysisServiceTests()
@@ -24,7 +25,7 @@ public class AnalysisServiceTests
         _tatuajeCatalogoRepository.Setup(r => r.GetImagePathsByCodigosAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        _sut = new AnalysisService(_consultaRepository.Object, _tatuajeCatalogoRepository.Object, _blobStorage.Object, _iaServiceClient.Object, NullLogger<AnalysisService>.Instance);
+        _sut = new AnalysisService(_consultaRepository.Object, _tatuajeCatalogoRepository.Object, _blobStorage.Object, _iaServiceClient.Object, _imageCropper.Object, NullLogger<AnalysisService>.Instance);
     }
 
     private static MemoryStream CreateImageStream(int sizeBytes = 100) => new(new byte[sizeBytes]);
@@ -245,5 +246,89 @@ public class AnalysisServiceTests
         Assert.Null(summaries[1].TopBand);
         Assert.Null(summaries[1].TopSimilarity);
         Assert.Equal("no_detection", summaries[1].Status);
+    }
+
+    [Fact]
+    public async Task EnrollDetectionsAsync_ReturnsNull_WhenAnalysisNotFoundOrNotOwnedByUser()
+    {
+        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Consulta?)null);
+
+        var result = await _sut.EnrollDetectionsAsync(Guid.NewGuid(), Guid.NewGuid(), [Guid.NewGuid()]);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task EnrollDetectionsAsync_ThrowsInvalidRequestException_WhenNoDetectionIdsProvided()
+    {
+        await Assert.ThrowsAsync<InvalidRequestException>(() =>
+            _sut.EnrollDetectionsAsync(Guid.NewGuid(), Guid.NewGuid(), []));
+    }
+
+    [Fact]
+    public async Task EnrollDetectionsAsync_CropsAndEnrollsSelectedDetections_WithNoBandAndOriginLinkedToAnalysis()
+    {
+        var usuarioId = Guid.NewGuid();
+        var deteccionSeleccionada = new Deteccion
+        {
+            Id = Guid.NewGuid(),
+            ConsultaId = Guid.NewGuid(),
+            BboxX = 10,
+            BboxY = 20,
+            BboxWidth = 100,
+            BboxHeight = 80,
+            Confianza = 0.91,
+            Verdict = RTattooAI.Domain.Enums.Verdict.NoMatch
+        };
+        var deteccionNoSeleccionada = new Deteccion
+        {
+            Id = Guid.NewGuid(),
+            ConsultaId = deteccionSeleccionada.ConsultaId,
+            BboxX = 0,
+            BboxY = 0,
+            BboxWidth = 30,
+            BboxHeight = 30,
+            Confianza = 0.4,
+            Verdict = RTattooAI.Domain.Enums.Verdict.NoMatch
+        };
+
+        var consulta = new Consulta
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuarioId,
+            Codigo = "CON-1",
+            ImagenOrigUrl = "consultas/1/original.jpg",
+            ImagenOrigHash = "hash"
+        };
+        consulta.Detecciones.Add(deteccionSeleccionada);
+        consulta.Detecciones.Add(deteccionNoSeleccionada);
+
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, usuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(consulta);
+        _blobStorage.Setup(b => b.DownloadAsync(consulta.ImagenOrigUrl, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([1, 2, 3]);
+        _imageCropper.Setup(c => c.CropToPng(It.IsAny<byte[]>(), 10, 20, 100, 80))
+            .Returns([9, 9, 9]);
+        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), "image/png", string.Empty, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnrollResultDto("tat_00099", string.Empty));
+
+        TatuajeCatalogo? captured = null;
+        _tatuajeCatalogoRepository.Setup(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()))
+            .Callback<TatuajeCatalogo, CancellationToken>((t, _) => captured = t)
+            .Returns(Task.CompletedTask);
+
+        var result = await _sut.EnrollDetectionsAsync(usuarioId, consulta.Id, [deteccionSeleccionada.Id]);
+
+        Assert.NotNull(result);
+        Assert.Single(result!);
+        Assert.Equal("tat_00099", result[0].CatalogId);
+        Assert.Null(result[0].Band);
+        Assert.Equal(consulta.Id, result[0].OriginAnalysisId);
+        Assert.NotNull(captured);
+        Assert.Null(captured!.BandaId);
+        Assert.Equal(consulta.Id, captured.ConsultaOrigenId);
+        _tatuajeCatalogoRepository.Verify(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()), Times.Once);
+        _tatuajeCatalogoRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

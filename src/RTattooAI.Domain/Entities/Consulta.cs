@@ -19,6 +19,13 @@ public class Consulta
     public DateTime? FechaFin { get; set; }
     public string? Notas { get; set; }
 
+    /// <summary>
+    /// Identificación opcional de la persona/detenido al que se le está analizando el
+    /// tatuaje, para facilitar ubicar su expediente si es un caso antiguo o recurrente.
+    /// </summary>
+    public string? PersonaNombre { get; set; }
+    public string? PersonaDocumento { get; set; }
+
     public Usuario? Usuario { get; set; }
     public ICollection<Deteccion> Detecciones { get; set; } = [];
 }

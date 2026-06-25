@@ -80,7 +80,8 @@ public class CatalogService : ICatalogService
             tatuaje.Fuente,
             tatuaje.RegistradoPorId,
             tatuaje.FechaRegistro,
-            tatuaje.Validado);
+            tatuaje.Validado,
+            tatuaje.ConsultaOrigenId);
     }
 
     public async Task<List<CatalogItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -89,11 +90,12 @@ public class CatalogService : ICatalogService
 
         return items.Select(t => new CatalogItemDto(
             t.Codigo,
-            t.Banda!.Nombre,
+            t.Banda?.Nombre,
             _blobStorage.GetReadUrl(t.ImagenUrl, ImageUrlValidity),
             t.Fuente,
             t.RegistradoPorId,
             t.FechaRegistro,
-            t.Validado)).ToList();
+            t.Validado,
+            t.ConsultaOrigenId)).ToList();
     }
 }
