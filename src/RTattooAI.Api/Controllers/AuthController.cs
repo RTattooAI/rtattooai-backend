@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Dtos.Auth;
 
@@ -17,6 +18,7 @@ public class AuthController : ControllerBase
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting("Login")]
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequestDto request, CancellationToken cancellationToken)
     {

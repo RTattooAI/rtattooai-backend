@@ -83,6 +83,13 @@ public class AnalysisService : IAnalysisService
         await _consultaRepository.AddAsync(consulta, cancellationToken);
         await _consultaRepository.SaveChangesAsync(cancellationToken);
 
+        if (consulta.PersonaNombre is not null || consulta.PersonaDocumento is not null)
+        {
+            _logger.LogInformation(
+                "Usuario {UsuarioId} registro datos de persona en la consulta {ConsultaId}",
+                usuarioId, consulta.Id);
+        }
+
         try
         {
             buffer.Position = 0;
@@ -142,12 +149,32 @@ public class AnalysisService : IAnalysisService
     public async Task<AnalysisDto?> GetByIdAsync(Guid id, Guid usuarioId, CancellationToken cancellationToken = default)
     {
         var consulta = await _consultaRepository.GetByIdAsync(id, usuarioId, cancellationToken);
-        return consulta is null ? null : await BuildDtoAsync(consulta, cancellationToken);
+        if (consulta is null)
+        {
+            return null;
+        }
+
+        if (consulta.PersonaNombre is not null || consulta.PersonaDocumento is not null)
+        {
+            _logger.LogInformation(
+                "Usuario {UsuarioId} accedio a datos de persona de la consulta {ConsultaId}",
+                usuarioId, consulta.Id);
+        }
+
+        return await BuildDtoAsync(consulta, cancellationToken);
     }
 
     public async Task<List<AnalysisSummaryDto>> GetHistoryAsync(Guid usuarioId, CancellationToken cancellationToken = default)
     {
         var consultas = await _consultaRepository.GetAllByUsuarioIdAsync(usuarioId, cancellationToken);
+
+        var conPersona = consultas.Count(c => c.PersonaNombre is not null || c.PersonaDocumento is not null);
+        if (conPersona > 0)
+        {
+            _logger.LogInformation(
+                "Usuario {UsuarioId} listo el historial: {ConPersona} de {Total} consultas con datos de persona",
+                usuarioId, conPersona, consultas.Count);
+        }
 
         return consultas.Select(consulta =>
         {
