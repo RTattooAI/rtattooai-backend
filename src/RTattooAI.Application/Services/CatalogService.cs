@@ -84,6 +84,36 @@ public class CatalogService : ICatalogService
             tatuaje.ConsultaOrigenId);
     }
 
+    public async Task<CatalogItemDto?> AssignBandAsync(string catalogId, string band, Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(band))
+        {
+            throw new InvalidRequestException("La banda es obligatoria.");
+        }
+
+        var tatuaje = await _tatuajeCatalogoRepository.GetByCodigoAsync(catalogId, cancellationToken);
+        if (tatuaje is null)
+        {
+            return null;
+        }
+
+        var banda = await _bandaCriminalRepository.GetOrCreateByNombreAsync(band, usuarioId, cancellationToken);
+        tatuaje.BandaId = banda.Id;
+        tatuaje.Banda = banda;
+
+        await _tatuajeCatalogoRepository.SaveChangesAsync(cancellationToken);
+
+        return new CatalogItemDto(
+            tatuaje.Codigo,
+            banda.Nombre,
+            _blobStorage.GetReadUrl(tatuaje.ImagenUrl, ImageUrlValidity),
+            tatuaje.Fuente,
+            tatuaje.RegistradoPorId,
+            tatuaje.FechaRegistro,
+            tatuaje.Validado,
+            tatuaje.ConsultaOrigenId);
+    }
+
     public async Task<List<CatalogItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         var items = await _tatuajeCatalogoRepository.GetAllAsync(cancellationToken);

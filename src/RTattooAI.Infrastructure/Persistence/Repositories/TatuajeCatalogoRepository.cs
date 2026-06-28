@@ -37,6 +37,11 @@ public class TatuajeCatalogoRepository : ITatuajeCatalogoRepository
             .OrderByDescending(t => t.FechaRegistro)
             .ToListAsync(cancellationToken);
 
+    public Task<TatuajeCatalogo?> GetByCodigoAsync(string codigo, CancellationToken cancellationToken = default) =>
+        _context.TatuajesCatalogo
+            .Include(t => t.Banda)
+            .FirstOrDefaultAsync(t => t.Codigo == codigo, cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
         _context.SaveChangesAsync(cancellationToken);
 }

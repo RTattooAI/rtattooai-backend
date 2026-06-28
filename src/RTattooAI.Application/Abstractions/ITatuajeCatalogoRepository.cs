@@ -10,5 +10,7 @@ public interface ITatuajeCatalogoRepository
 
     Task<List<TatuajeCatalogo>> GetAllAsync(CancellationToken cancellationToken = default);
 
+    Task<TatuajeCatalogo?> GetByCodigoAsync(string codigo, CancellationToken cancellationToken = default);
+
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -7,4 +7,6 @@ public interface ICatalogService
     Task<CatalogItemDto> EnrollAsync(Guid usuarioId, Stream imageStream, string fileName, string contentType, long contentLength, string band, CancellationToken cancellationToken = default);
 
     Task<List<CatalogItemDto>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    Task<CatalogItemDto?> AssignBandAsync(string catalogId, string band, Guid usuarioId, CancellationToken cancellationToken = default);
 }

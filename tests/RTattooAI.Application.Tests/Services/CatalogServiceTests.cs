@@ -78,6 +78,59 @@ public class CatalogServiceTests
     }
 
     [Fact]
+    public async Task AssignBandAsync_ThrowsInvalidRequestException_WhenBandIsEmpty()
+    {
+        await Assert.ThrowsAsync<InvalidRequestException>(() =>
+            _sut.AssignBandAsync("tat_00001", "   ", Guid.NewGuid()));
+
+        _tatuajeCatalogoRepository.Verify(r => r.GetByCodigoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AssignBandAsync_ReturnsNull_WhenCatalogItemNotFound()
+    {
+        _tatuajeCatalogoRepository.Setup(r => r.GetByCodigoAsync("tat_99999", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TatuajeCatalogo?)null);
+
+        var result = await _sut.AssignBandAsync("tat_99999", "Los Pulpos", Guid.NewGuid());
+
+        Assert.Null(result);
+        _bandaCriminalRepository.Verify(r => r.GetOrCreateByNombreAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AssignBandAsync_UpdatesBandaId_AndReturnsDto_WhenFound()
+    {
+        var usuarioId = Guid.NewGuid();
+        var tatuaje = new TatuajeCatalogo
+        {
+            Id = Guid.NewGuid(),
+            Codigo = "tat_00026",
+            BandaId = null,
+            ImagenUrl = "catalogo/26/original.jpg",
+            ImagenHash = "hash",
+            Fuente = "deteccion_analisis",
+            Validado = false,
+            RegistradoPorId = Guid.NewGuid(),
+            ConsultaOrigenId = Guid.NewGuid()
+        };
+        var banda = new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Los Pulpos" };
+
+        _tatuajeCatalogoRepository.Setup(r => r.GetByCodigoAsync("tat_00026", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tatuaje);
+        _bandaCriminalRepository.Setup(r => r.GetOrCreateByNombreAsync("Los Pulpos", usuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(banda);
+
+        var dto = await _sut.AssignBandAsync("tat_00026", "Los Pulpos", usuarioId);
+
+        Assert.NotNull(dto);
+        Assert.Equal(banda.Id, tatuaje.BandaId);
+        Assert.Equal("Los Pulpos", dto!.Band);
+        Assert.Equal(tatuaje.ConsultaOrigenId, dto.OriginAnalysisId);
+        _tatuajeCatalogoRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task GetAllAsync_ReturnsMappedCatalogItems()
     {
         var banda = new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Barrio 18" };

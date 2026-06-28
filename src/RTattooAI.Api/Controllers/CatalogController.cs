@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Dtos.Catalog;
 using RTattooAI.Application.Exceptions;
 
 namespace RTattooAI.Api.Controllers;
@@ -39,5 +40,21 @@ public class CatalogController : ControllerBase
     {
         var result = await _catalogService.GetAllAsync(cancellationToken);
         return Ok(result);
+    }
+
+    [HttpPatch("{catalogId}/band")]
+    public async Task<IActionResult> AssignBand(string catalogId, [FromBody] AssignBandRequestDto request, CancellationToken cancellationToken)
+    {
+        var usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+        try
+        {
+            var result = await _catalogService.AssignBandAsync(catalogId, request.Band, usuarioId, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (InvalidRequestException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }
