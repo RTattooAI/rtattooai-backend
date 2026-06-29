@@ -14,10 +14,17 @@ public class DeteccionConfiguration : IEntityTypeConfiguration<Deteccion>
         builder.Property(d => d.Id).ValueGeneratedNever();
 
         builder.Property(d => d.Verdict).HasConversion<string>().HasMaxLength(20);
+        builder.Property(d => d.EstadoValidacion).HasConversion<string>().HasMaxLength(20);
+        builder.Property(d => d.ObservacionesPerito).HasMaxLength(1000);
 
         builder.HasOne(d => d.Consulta)
             .WithMany(c => c.Detecciones)
             .HasForeignKey(d => d.ConsultaId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(d => d.ValidadoPor)
+            .WithMany()
+            .HasForeignKey(d => d.ValidadoPorId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

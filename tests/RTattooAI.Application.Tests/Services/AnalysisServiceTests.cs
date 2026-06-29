@@ -331,4 +331,82 @@ public class AnalysisServiceTests
         _tatuajeCatalogoRepository.Verify(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()), Times.Once);
         _tatuajeCatalogoRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task ValidateDetectionAsync_ReturnsNull_WhenAnalysisNotFoundOrNotOwnedByUser()
+    {
+        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Consulta?)null);
+
+        var result = await _sut.ValidateDetectionAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "validated", null);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ValidateDetectionAsync_ReturnsNull_WhenDetectionDoesNotBelongToAnalysis()
+    {
+        var consulta = new Consulta
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = Guid.NewGuid(),
+            Codigo = "CON-1",
+            ImagenOrigUrl = "consultas/1/original.jpg",
+            ImagenOrigHash = "hash"
+        };
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, consulta.UsuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(consulta);
+
+        var result = await _sut.ValidateDetectionAsync(consulta.UsuarioId, consulta.Id, Guid.NewGuid(), "validated", null);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ValidateDetectionAsync_ThrowsInvalidRequestException_WhenStatusIsInvalid()
+    {
+        await Assert.ThrowsAsync<InvalidRequestException>(() =>
+            _sut.ValidateDetectionAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "bogus", null));
+
+        _consultaRepository.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ValidateDetectionAsync_UpdatesEstadoAndNotas_AndReturnsDto_WhenFound()
+    {
+        var usuarioId = Guid.NewGuid();
+        var deteccion = new Deteccion
+        {
+            Id = Guid.NewGuid(),
+            ConsultaId = Guid.NewGuid(),
+            BboxX = 0,
+            BboxY = 0,
+            BboxWidth = 10,
+            BboxHeight = 10,
+            Confianza = 0.7,
+            Verdict = RTattooAI.Domain.Enums.Verdict.Match
+        };
+        var consulta = new Consulta
+        {
+            Id = deteccion.ConsultaId,
+            UsuarioId = usuarioId,
+            Codigo = "CON-1",
+            ImagenOrigUrl = "consultas/1/original.jpg",
+            ImagenOrigHash = "hash"
+        };
+        consulta.Detecciones.Add(deteccion);
+
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, usuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(consulta);
+
+        var dto = await _sut.ValidateDetectionAsync(usuarioId, consulta.Id, deteccion.Id, "dismissed", "  No es un tatuaje real.  ");
+
+        Assert.NotNull(dto);
+        Assert.Equal("dismissed", dto!.ValidationStatus);
+        Assert.Equal("No es un tatuaje real.", dto.ValidationNotes);
+        Assert.Equal(RTattooAI.Domain.Enums.EstadoValidacion.Descartado, deteccion.EstadoValidacion);
+        Assert.Equal(usuarioId, deteccion.ValidadoPorId);
+        Assert.NotNull(deteccion.FechaValidacion);
+        _consultaRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

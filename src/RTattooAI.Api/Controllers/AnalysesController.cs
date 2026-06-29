@@ -58,6 +58,22 @@ public class AnalysesController : ControllerBase
         }
     }
 
+    [HttpPatch("{id:guid}/detections/{detectionId:guid}/validation")]
+    public async Task<IActionResult> ValidateDetection(Guid id, Guid detectionId, [FromBody] ValidateDetectionRequestDto request, CancellationToken cancellationToken)
+    {
+        var usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+        try
+        {
+            var result = await _analysisService.ValidateDetectionAsync(usuarioId, id, detectionId, request.Status, request.Notes, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (InvalidRequestException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {

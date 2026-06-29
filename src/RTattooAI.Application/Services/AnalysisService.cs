@@ -266,6 +266,30 @@ public class AnalysisService : IAnalysisService
         return results;
     }
 
+    public async Task<DetectionDto?> ValidateDetectionAsync(Guid usuarioId, Guid analysisId, Guid detectionId, string status, string? notes, CancellationToken cancellationToken = default)
+    {
+        var estado = ParseValidationStatus(status);
+
+        var consulta = await _consultaRepository.GetByIdAsync(analysisId, usuarioId, cancellationToken);
+        var deteccion = consulta?.Detecciones.FirstOrDefault(d => d.Id == detectionId);
+        if (deteccion is null)
+        {
+            return null;
+        }
+
+        deteccion.EstadoValidacion = estado;
+        deteccion.ObservacionesPerito = NullIfBlank(notes);
+        deteccion.ValidadoPorId = usuarioId;
+        deteccion.FechaValidacion = DateTime.UtcNow;
+
+        await _consultaRepository.SaveChangesAsync(cancellationToken);
+
+        var codigos = deteccion.Coincidencias.Select(c => c.CatalogoCodigo);
+        var catalogImagePaths = await _tatuajeCatalogoRepository.GetImagePathsByCodigosAsync(codigos, cancellationToken);
+
+        return MapDetectionDto(deteccion, catalogImagePaths);
+    }
+
     private async Task<AnalysisDto> BuildDtoAsync(Consulta consulta, CancellationToken cancellationToken)
     {
         var codigos = consulta.Detecciones.SelectMany(d => d.Coincidencias).Select(c => c.CatalogoCodigo);
@@ -276,20 +300,7 @@ public class AnalysisService : IAnalysisService
             ? null
             : _blobStorage.GetReadUrl(consulta.ImagenMiniaturaUrl, ImageUrlValidity);
 
-        var detections = consulta.Detecciones.Select(d => new DetectionDto(
-            d.Id,
-            new BboxDto(d.BboxX, d.BboxY, d.BboxWidth, d.BboxHeight),
-            d.Confianza,
-            d.Verdict == Verdict.Match ? "match" : "no_match",
-            d.Coincidencias
-                .OrderByDescending(c => c.Similitud)
-                .Select(c => new MatchDto(
-                    c.CatalogoCodigo,
-                    c.Banda,
-                    c.Similitud,
-                    catalogImagePaths.TryGetValue(c.CatalogoCodigo, out var imagePath) ? _blobStorage.GetReadUrl(imagePath, ImageUrlValidity) : c.ReferenceImageUrl))
-                .ToList()))
-            .ToList();
+        var detections = consulta.Detecciones.Select(d => MapDetectionDto(d, catalogImagePaths)).ToList();
 
         return new AnalysisDto(
             consulta.Id,
@@ -308,6 +319,22 @@ public class AnalysisService : IAnalysisService
             consulta.Notas);
     }
 
+    private DetectionDto MapDetectionDto(Deteccion d, Dictionary<string, string> catalogImagePaths) => new(
+        d.Id,
+        new BboxDto(d.BboxX, d.BboxY, d.BboxWidth, d.BboxHeight),
+        d.Confianza,
+        d.Verdict == Verdict.Match ? "match" : "no_match",
+        d.Coincidencias
+            .OrderByDescending(c => c.Similitud)
+            .Select(c => new MatchDto(
+                c.CatalogoCodigo,
+                c.Banda,
+                c.Similitud,
+                catalogImagePaths.TryGetValue(c.CatalogoCodigo, out var imagePath) ? _blobStorage.GetReadUrl(imagePath, ImageUrlValidity) : c.ReferenceImageUrl))
+            .ToList(),
+        ToContractValidationStatus(d.EstadoValidacion),
+        d.ObservacionesPerito);
+
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string ToContractStatus(AnalysisStatus status) => status switch
@@ -317,5 +344,22 @@ public class AnalysisService : IAnalysisService
         AnalysisStatus.NoDetection => "no_detection",
         AnalysisStatus.Failed => "failed",
         _ => throw new ArgumentOutOfRangeException(nameof(status))
+    };
+
+    private static string ToContractValidationStatus(EstadoValidacion estado) => estado switch
+    {
+        EstadoValidacion.Pendiente => "pending",
+        EstadoValidacion.Validado => "validated",
+        EstadoValidacion.EnRevision => "review",
+        EstadoValidacion.Descartado => "dismissed",
+        _ => throw new ArgumentOutOfRangeException(nameof(estado))
+    };
+
+    private static EstadoValidacion ParseValidationStatus(string status) => status switch
+    {
+        "validated" => EstadoValidacion.Validado,
+        "review" => EstadoValidacion.EnRevision,
+        "dismissed" => EstadoValidacion.Descartado,
+        _ => throw new InvalidRequestException($"Estado de validación inválido: '{status}'.")
     };
 }

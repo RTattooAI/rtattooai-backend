@@ -4,7 +4,14 @@ public record BboxDto(int X, int Y, int Width, int Height);
 
 public record MatchDto(string CatalogId, string Band, double Similarity, string? ReferenceImageUrl);
 
-public record DetectionDto(Guid Id, BboxDto Bbox, double Confidence, string Verdict, IReadOnlyList<MatchDto> Matches);
+public record DetectionDto(
+    Guid Id,
+    BboxDto Bbox,
+    double Confidence,
+    string Verdict,
+    IReadOnlyList<MatchDto> Matches,
+    string ValidationStatus,
+    string? ValidationNotes);
 
 public record AnalysisDto(
     Guid Id,

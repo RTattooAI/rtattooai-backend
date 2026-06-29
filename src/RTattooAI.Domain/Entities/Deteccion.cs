@@ -13,6 +13,12 @@ public class Deteccion
     public double Confianza { get; set; }
     public Verdict Verdict { get; set; }
 
+    public EstadoValidacion EstadoValidacion { get; set; } = EstadoValidacion.Pendiente;
+    public string? ObservacionesPerito { get; set; }
+    public Guid? ValidadoPorId { get; set; }
+    public DateTime? FechaValidacion { get; set; }
+
     public Consulta? Consulta { get; set; }
+    public Usuario? ValidadoPor { get; set; }
     public ICollection<Coincidencia> Coincidencias { get; set; } = [];
 }
