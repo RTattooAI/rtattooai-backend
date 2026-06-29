@@ -1,0 +1,25 @@
+name: Keep Azure Container Apps warm
+
+# Hace ping periodico a los servicios desplegados en Azure Container Apps
+# (scale-to-zero) para evitar el cold start (~30s, carga de modelos YOLO+DINOv2)
+# en el primer analisis real tras un periodo de inactividad.
+#
+# El trigger "schedule" solo se activa cuando este archivo vive en la rama
+# default del repo en GitHub. Si esto corre en una rama feature/*, hay que
+# fusionarlo a la rama default (o cambiarla) para que el cron real arranque.
+# "workflow_dispatch" permite probarlo a mano mientras tanto.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend (+ servicio IA interno)
+        run: curl -fsS --max-time 90 "https://rtattooai-backend.calmground-e71c08ea.eastus2.azurecontainerapps.io/health/deep"
+
+      - name: Ping frontend
+        run: curl -fsS --max-time 60 "https://rtattooai-frontend.calmground-e71c08ea.eastus2.azurecontainerapps.io/" -o /dev/null

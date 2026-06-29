@@ -14,6 +14,7 @@ namespace RTattooAI.Application.Services;
 public class AnalysisService : IAnalysisService
 {
     private const string FuenteDeteccionAnalisis = "deteccion_analisis";
+    private const int ThumbnailMaxDimension = 240;
     private static readonly TimeSpan ImageUrlValidity = TimeSpan.FromHours(1);
 
     private readonly IConsultaRepository _consultaRepository;
@@ -66,6 +67,22 @@ public class AnalysisService : IAnalysisService
 
         await _blobStorage.UploadAsync(blobPath, buffer, contentType, cancellationToken);
 
+        string? thumbnailBlobPath = null;
+        try
+        {
+            var thumbnailBytes = _imageCropper.ResizeToThumbnailPng(buffer.ToArray(), ThumbnailMaxDimension);
+            thumbnailBlobPath = $"consultas/{consultaId}/thumbnail.png";
+            using var thumbnailStream = new MemoryStream(thumbnailBytes);
+            await _blobStorage.UploadAsync(thumbnailBlobPath, thumbnailStream, "image/png", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // La miniatura es solo para listas (historial); si falla, el analisis
+            // sigue su curso normal y la lista cae al placeholder con el id.
+            _logger.LogWarning(ex, "No se pudo generar miniatura para la consulta {ConsultaId}", consultaId);
+            thumbnailBlobPath = null;
+        }
+
         var consulta = new Consulta
         {
             Id = consultaId,
@@ -73,6 +90,7 @@ public class AnalysisService : IAnalysisService
             Codigo = $"CON-{DateTime.UtcNow:yyyyMMddHHmmss}-{consultaId.ToString("N")[..6]}",
             ImagenOrigUrl = blobPath,
             ImagenOrigHash = hash,
+            ImagenMiniaturaUrl = thumbnailBlobPath,
             Estado = AnalysisStatus.Processing,
             FechaConsulta = DateTime.UtcNow,
             PersonaNombre = NullIfBlank(personName),

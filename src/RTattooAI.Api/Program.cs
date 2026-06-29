@@ -119,6 +119,16 @@ app.UseRateLimiter();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
+// Pensado para un ping externo periodico (GitHub Actions, etc.): ademas de
+// confirmar que el backend esta despierto, llama al servicio IA (interno,
+// tambien scale-to-zero) para evitar el cold start de ~30s en el primer
+// analisis real tras un periodo de inactividad.
+app.MapGet("/health/deep", async (IIaServiceClient iaServiceClient, CancellationToken cancellationToken) =>
+{
+    var iaUp = await iaServiceClient.PingAsync(cancellationToken);
+    return Results.Ok(new { status = "ok", iaService = iaUp ? "ok" : "unreachable" });
+}).AllowAnonymous();
+
 app.MapControllers();
 
 app.Run();

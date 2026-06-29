@@ -22,4 +22,19 @@ public class ImageSharpCropper : IImageCropper
         image.Save(output, new PngEncoder());
         return output.ToArray();
     }
+
+    public byte[] ResizeToThumbnailPng(byte[] imageBytes, int maxDimension)
+    {
+        using var image = Image.Load(imageBytes);
+
+        image.Mutate(ctx => ctx.Resize(new ResizeOptions
+        {
+            Mode = ResizeMode.Max,
+            Size = new Size(maxDimension, maxDimension)
+        }));
+
+        using var output = new MemoryStream();
+        image.Save(output, new PngEncoder());
+        return output.ToArray();
+    }
 }

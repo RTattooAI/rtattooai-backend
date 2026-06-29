@@ -58,4 +58,17 @@ public class IaServiceClient : IIaServiceClient
 
         return new EnrollResultDto(body.CatalogId, body.Band);
     }
+
+    public async Task<bool> PingAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync("/health", cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 }
