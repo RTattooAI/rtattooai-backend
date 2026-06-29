@@ -22,7 +22,9 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
+        services.AddScoped<IRolRepository, RolRepository>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUsersService, UsersService>();
 
         services.AddScoped<IConsultaRepository, ConsultaRepository>();
         services.AddScoped<ITatuajeCatalogoRepository, TatuajeCatalogoRepository>();

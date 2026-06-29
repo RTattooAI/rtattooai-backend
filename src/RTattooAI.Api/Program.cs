@@ -83,6 +83,14 @@ if (app.Environment.IsDevelopment())
     await db.Database.MigrateAsync();
     await DbInitializer.SeedAsync(db, scope.ServiceProvider.GetRequiredService<IPasswordHasher>(), app.Configuration);
 }
+else
+{
+    // Los roles (analyst/supervisor/admin) son datos de catalogo, no datos de prueba:
+    // deben existir en cualquier entorno para que la gestion de usuarios funcione.
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await DbInitializer.EnsureRolesAsync(db);
+}
 
 app.UseExceptionHandler(errorApp =>
 {
