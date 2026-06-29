@@ -37,7 +37,9 @@ public static class DependencyInjection
         services.AddHttpClient<IIaServiceClient, IaServiceClient>(client =>
         {
             client.BaseAddress = new Uri(iaServiceBaseUrl);
-            client.Timeout = TimeSpan.FromSeconds(30);
+            // El servicio IA puede escalar desde 0 réplicas (scale-to-zero); un cold start
+            // tarda en cargar los modelos, más que el timeout HTTP por defecto.
+            client.Timeout = TimeSpan.FromSeconds(100);
         });
 
         return services;

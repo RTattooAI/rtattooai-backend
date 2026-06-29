@@ -109,6 +109,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+
 app.MapControllers();
 
 app.Run();

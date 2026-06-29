@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+.git/
+.gitignore
+*.user
+*.log
+*.env
+.env
+tests/
+RTattooAI_*.md
+REPORTE_ENTREGA.md
+CLAUDE.md
+docker-compose.local.yml
