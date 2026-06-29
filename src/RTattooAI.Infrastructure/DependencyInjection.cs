@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IRolRepository, RolRepository>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUsersService, UsersService>();
+        services.AddScoped<IDashboardService, RTattooAI.Infrastructure.Services.DashboardService>();
 
         services.AddScoped<IConsultaRepository, ConsultaRepository>();
         services.AddScoped<ITatuajeCatalogoRepository, TatuajeCatalogoRepository>();
