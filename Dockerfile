@@ -17,9 +17,17 @@ RUN dotnet publish src/RTattooAI.Api/RTattooAI.Api.csproj -c Release -o /app
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+# La imagen de runtime no trae ningun cliente HTTP: sin esto el healthcheck del
+# contenedor falla siempre y el servicio figura "unhealthy" aunque este sano.
+RUN apt-get update     && apt-get install -y --no-install-recommends curl     && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --uid 1500 --no-create-home --shell /usr/sbin/nologin appuser
 COPY --from=build /app .
-RUN chown -R appuser:appuser /app
+
+# El almacenamiento de imagenes se monta como volumen sobre /data/files. Docker copia
+# el propietario del directorio de la imagen al crear el volumen: por eso hay que
+# crearlo aqui con el usuario correcto, o el contenedor no podria escribir en el.
+RUN mkdir -p /data/files && chown -R appuser:appuser /app /data
 USER appuser
 
 ENV ASPNETCORE_URLS=http://+:8080

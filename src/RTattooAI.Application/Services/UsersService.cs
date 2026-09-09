@@ -2,6 +2,7 @@ using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
 using RTattooAI.Application.Dtos.Users;
 using RTattooAI.Application.Exceptions;
+using RTattooAI.Application.Validation;
 using RTattooAI.Domain.Entities;
 
 namespace RTattooAI.Application.Services;
@@ -32,10 +33,7 @@ public class UsersService : IUsersService
             throw new InvalidRequestException("Nombre, correo y contraseña son obligatorios.");
         }
 
-        if (request.Password.Length < 8)
-        {
-            throw new InvalidRequestException("La contraseña debe tener al menos 8 caracteres.");
-        }
+        PasswordPolicy.EnsureValid(request.Password, request.Email);
 
         if (!Roles.All.Contains(request.Role))
         {
@@ -76,6 +74,23 @@ public class UsersService : IUsersService
         }
 
         usuario.EstaActivo = active;
+        usuario.FechaModificacion = DateTime.UtcNow;
+        await _usuarioRepository.SaveChangesAsync(cancellationToken);
+
+        return ToDto(usuario);
+    }
+
+    public async Task<UserListItemDto?> ResetPasswordAsync(Guid id, string newPassword, CancellationToken cancellationToken = default)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(id, cancellationToken);
+        if (usuario is null)
+        {
+            return null;
+        }
+
+        PasswordPolicy.EnsureValid(newPassword, usuario.Email);
+
+        usuario.PasswordHash = _passwordHasher.Hash(newPassword);
         usuario.FechaModificacion = DateTime.UtcNow;
         await _usuarioRepository.SaveChangesAsync(cancellationToken);
 

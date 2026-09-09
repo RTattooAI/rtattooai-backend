@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
 using RTattooAI.Domain.Entities;
@@ -15,7 +16,13 @@ public static class DbInitializer
         [Roles.Admin] = "Administrador del sistema"
     };
 
-    public static async Task SeedAsync(AppDbContext context, IPasswordHasher passwordHasher, IConfiguration configuration)
+    /// <summary>
+    /// Crea los roles y, si todavía no existe ninguna cuenta, el administrador inicial
+    /// a partir de Seed:AdminEmail / Seed:AdminPassword. Se ejecuta en todos los
+    /// entornos: en un despliegue propio no hay otra vía para crear la primera cuenta,
+    /// y sin ella la gestión de usuarios (que exige rol admin) sería inalcanzable.
+    /// </summary>
+    public static async Task SeedAsync(AppDbContext context, IPasswordHasher passwordHasher, IConfiguration configuration, ILogger? logger = null)
     {
         var roles = await EnsureRolesAsync(context);
 
@@ -24,28 +31,33 @@ public static class DbInitializer
             return;
         }
 
-        var seedEmail = configuration["Seed:AnalystEmail"];
-        var seedPassword = configuration["Seed:AnalystPassword"];
+        // Se aceptan las claves antiguas (Seed:Analyst*) para no romper entornos ya
+        // configurados, aunque la cuenta que se crea siempre es de administración.
+        var seedEmail = configuration["Seed:AdminEmail"] ?? configuration["Seed:AnalystEmail"];
+        var seedPassword = configuration["Seed:AdminPassword"] ?? configuration["Seed:AnalystPassword"];
+        var seedName = configuration["Seed:AdminName"] ?? "Administrador";
 
         if (string.IsNullOrWhiteSpace(seedEmail) || string.IsNullOrWhiteSpace(seedPassword))
         {
+            logger?.LogWarning(
+                "No hay cuentas en la base de datos y Seed:AdminEmail/Seed:AdminPassword no están configurados: " +
+                "nadie podrá iniciar sesión hasta definirlos.");
             return;
         }
 
-        // El primer usuario sembrado es admin: necesita poder gestionar al resto de
-        // usuarios desde el dia uno. No hay restriccion de rol en el resto de la API,
-        // asi que sigue pudiendo analizar/enrolar igual que un analyst comun.
         var admin = new Usuario
         {
             Id = Guid.NewGuid(),
-            NombreCompleto = "Analista 1",
-            Email = seedEmail,
+            NombreCompleto = seedName,
+            Email = seedEmail.Trim(),
             PasswordHash = passwordHasher.Hash(seedPassword),
             RolId = roles[Roles.Admin].Id
         };
 
         context.Usuarios.Add(admin);
         await context.SaveChangesAsync();
+
+        logger?.LogInformation("Cuenta de administración inicial creada para {Email}", admin.Email);
     }
 
     public static async Task<Dictionary<string, Rol>> EnsureRolesAsync(AppDbContext context)

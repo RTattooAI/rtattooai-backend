@@ -17,7 +17,11 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("Default")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("Default"),
+                // El contenedor de SQL Server tarda en aceptar conexiones tras arrancar,
+                // y una caida momentanea no deberia tumbar una peticion en curso.
+                sql => sql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
 
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -28,11 +32,25 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, RTattooAI.Infrastructure.Services.DashboardService>();
 
         services.AddScoped<IConsultaRepository, ConsultaRepository>();
+        services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ITatuajeCatalogoRepository, TatuajeCatalogoRepository>();
         services.AddScoped<IBandaCriminalRepository, BandaCriminalRepository>();
         services.AddScoped<IAnalysisService, AnalysisService>();
         services.AddScoped<ICatalogService, CatalogService>();
-        services.AddSingleton<IBlobStorage, AzureBlobStorage>();
+        services.AddSingleton<IFileUrlSigner, FileUrlSigner>();
+
+        // "local" (predeterminado) guarda en disco y sirve las imagenes con URL firmada;
+        // "azure" mantiene el camino original con Blob Storage y SAS.
+        var storageProvider = configuration["Storage:Provider"] ?? "local";
+        if (string.Equals(storageProvider, "azure", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IBlobStorage, AzureBlobStorage>();
+        }
+        else
+        {
+            services.AddSingleton<IBlobStorage, LocalFileStorage>();
+        }
         services.AddSingleton<IImageCropper, ImageSharpCropper>();
 
         var iaServiceBaseUrl = configuration["IaService:BaseUrl"]

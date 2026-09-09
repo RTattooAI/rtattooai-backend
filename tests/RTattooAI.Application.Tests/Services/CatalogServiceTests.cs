@@ -3,6 +3,7 @@ using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Dtos.Ia;
 using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Services;
+using RTattooAI.Application.Tests.TestData;
 using RTattooAI.Domain.Entities;
 using Xunit;
 
@@ -24,7 +25,7 @@ public class CatalogServiceTests
         _sut = new CatalogService(_tatuajeCatalogoRepository.Object, _bandaCriminalRepository.Object, _blobStorage.Object, _iaServiceClient.Object);
     }
 
-    private static MemoryStream CreateImageStream(int sizeBytes = 100) => new(new byte[sizeBytes]);
+    private static MemoryStream CreateImageStream() => TestImages.JpegStream();
 
     [Fact]
     public async Task EnrollAsync_ThrowsInvalidImageException_WhenContentTypeIsNotAllowed()
@@ -157,5 +158,64 @@ public class CatalogServiceTests
         Assert.Equal("Barrio 18", item.Band);
         Assert.Equal("https://blob.test/catalogo/1/original.jpg", item.ImageUrl);
         Assert.True(item.Validated);
+    }
+
+    [Fact]
+    public async Task SetValidatedAsync_ReturnsNull_WhenCatalogItemNotFound()
+    {
+        _tatuajeCatalogoRepository.Setup(r => r.GetByCodigoAsync("tat_inexistente", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TatuajeCatalogo?)null);
+
+        var result = await _sut.SetValidatedAsync("tat_inexistente", true, Guid.NewGuid());
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task SetValidatedAsync_Throws_WhenTheItemHasNoBandAssigned()
+    {
+        // Validar una entrada sin banda dejaria el catalogo con un tatuaje "confirmado"
+        // que no apunta a ninguna organizacion: no tiene sentido pericial.
+        var tatuaje = new TatuajeCatalogo
+        {
+            Id = Guid.NewGuid(), Codigo = "tat_00900", BandaId = null,
+            ImagenUrl = "catalogo/1/original.png", ImagenHash = "h", Fuente = "deteccion_analisis"
+        };
+        _tatuajeCatalogoRepository.Setup(r => r.GetByCodigoAsync("tat_00900", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tatuaje);
+
+        await Assert.ThrowsAsync<InvalidRequestException>(() => _sut.SetValidatedAsync("tat_00900", true, Guid.NewGuid()));
+
+        Assert.False(tatuaje.Validado);
+    }
+
+    [Fact]
+    public async Task SetValidatedAsync_MarksTheItemAsValidated_WhenItHasABand()
+    {
+        var banda = new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Los Pulpos" };
+        var tatuaje = new TatuajeCatalogo
+        {
+            Id = Guid.NewGuid(), Codigo = "tat_00901", BandaId = banda.Id, Banda = banda,
+            ImagenUrl = "catalogo/2/original.png", ImagenHash = "h", Fuente = "carga_manual"
+        };
+        _tatuajeCatalogoRepository.Setup(r => r.GetByCodigoAsync("tat_00901", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tatuaje);
+
+        var dto = await _sut.SetValidatedAsync("tat_00901", true, Guid.NewGuid());
+
+        Assert.NotNull(dto);
+        Assert.True(dto!.Validated);
+        Assert.True(tatuaje.Validado);
+        Assert.Equal("Los Pulpos", dto.Band);
+        _tatuajeCatalogoRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnrollAsync_Throws_WhenBytesAreNotARealImage()
+    {
+        await Assert.ThrowsAsync<InvalidImageException>(() =>
+            _sut.EnrollAsync(Guid.NewGuid(), new MemoryStream(TestImages.NotAnImage()), "file.jpg", "image/jpeg", 100, "Los Pulpos"));
+
+        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

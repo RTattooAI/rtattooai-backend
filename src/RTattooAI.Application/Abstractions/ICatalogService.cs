@@ -9,4 +9,10 @@ public interface ICatalogService
     Task<List<CatalogItemDto>> GetAllAsync(CancellationToken cancellationToken = default);
 
     Task<CatalogItemDto?> AssignBandAsync(string catalogId, string band, Guid usuarioId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Compuerta de revisión humana del catálogo: marca una entrada como validada
+    /// (o revierte la validación). Solo roles de supervisión.
+    /// </summary>
+    Task<CatalogItemDto?> SetValidatedAsync(string catalogId, bool validated, Guid usuarioId, CancellationToken cancellationToken = default);
 }

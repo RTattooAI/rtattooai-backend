@@ -172,6 +172,62 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.ToTable("Consultas", (string)null);
                 });
 
+            modelBuilder.Entity("RTattooAI.Domain.Entities.ConsultaImagen", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConsultaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImagenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("ImagenMiniaturaUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ImagenUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ModelVersion")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Origen")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("TiempoProcMs")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConsultaId", "Orden")
+                        .IsUnique();
+
+                    b.ToTable("ConsultaImagenes", (string)null);
+                });
+
             modelBuilder.Entity("RTattooAI.Domain.Entities.Deteccion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -193,6 +249,9 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                         .HasColumnType("float");
 
                     b.Property<Guid>("ConsultaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConsultaImagenId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("EstadoValidacion")
@@ -219,9 +278,56 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ConsultaId");
 
+                    b.HasIndex("ConsultaImagenId");
+
                     b.HasIndex("ValidadoPorId");
 
                     b.ToTable("Detecciones", (string)null);
+                });
+
+            modelBuilder.Entity("RTattooAI.Domain.Entities.RegistroAuditoria", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Accion")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("DireccionIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Recurso")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UsuarioEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid?>("UsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UsuarioRol")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Fecha");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("RegistroAuditoria", (string)null);
                 });
 
             modelBuilder.Entity("RTattooAI.Domain.Entities.Rol", b =>
@@ -398,12 +504,29 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("RTattooAI.Domain.Entities.ConsultaImagen", b =>
+                {
+                    b.HasOne("RTattooAI.Domain.Entities.Consulta", "Consulta")
+                        .WithMany("Imagenes")
+                        .HasForeignKey("ConsultaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Consulta");
+                });
+
             modelBuilder.Entity("RTattooAI.Domain.Entities.Deteccion", b =>
                 {
                     b.HasOne("RTattooAI.Domain.Entities.Consulta", "Consulta")
                         .WithMany("Detecciones")
                         .HasForeignKey("ConsultaId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RTattooAI.Domain.Entities.ConsultaImagen", "ConsultaImagen")
+                        .WithMany("Detecciones")
+                        .HasForeignKey("ConsultaImagenId")
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("RTattooAI.Domain.Entities.Usuario", "ValidadoPor")
@@ -413,7 +536,19 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Consulta");
 
+                    b.Navigation("ConsultaImagen");
+
                     b.Navigation("ValidadoPor");
+                });
+
+            modelBuilder.Entity("RTattooAI.Domain.Entities.RegistroAuditoria", b =>
+                {
+                    b.HasOne("RTattooAI.Domain.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("RTattooAI.Domain.Entities.TatuajeCatalogo", b =>
@@ -458,6 +593,13 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("RTattooAI.Domain.Entities.Consulta", b =>
+                {
+                    b.Navigation("Detecciones");
+
+                    b.Navigation("Imagenes");
+                });
+
+            modelBuilder.Entity("RTattooAI.Domain.Entities.ConsultaImagen", b =>
                 {
                     b.Navigation("Detecciones");
                 });

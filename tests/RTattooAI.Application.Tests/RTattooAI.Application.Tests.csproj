@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\RTattooAI.Application\RTattooAI.Application.csproj" />
     <ProjectReference Include="..\..\src\RTattooAI.Domain\RTattooAI.Domain.csproj" />
+    <ProjectReference Include="..\..\src\RTattooAI.Infrastructure\RTattooAI.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
