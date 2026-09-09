@@ -366,6 +366,10 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("BandaId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Categoria")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
                     b.Property<string>("Codigo")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -405,6 +409,14 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("RegistradoPorId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("UbicacionCorporal")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
 
                     b.Property<bool>("Validado")
                         .HasColumnType("bit");
@@ -470,6 +482,65 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.HasIndex("RolId");
 
                     b.ToTable("Usuarios", (string)null);
+                });
+
+            modelBuilder.Entity("RTattooAI.Domain.Entities.VersionModelo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Cabeza")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Detector")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Embedder")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("EsActiva")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Fuente")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Identificador")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<double?>("Margen")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("MetricaMap50")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("MetricaTop1")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("MetricaTop5")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Notas")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<double?>("Umbral")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Identificador")
+                        .IsUnique();
+
+                    b.ToTable("VersionesModelo", (string)null);
                 });
 
             modelBuilder.Entity("RTattooAI.Domain.Entities.BandaCriminal", b =>

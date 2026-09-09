@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Dtos.Analyses;
 using RTattooAI.Application.Dtos.Ia;
 using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Services;
@@ -184,7 +185,8 @@ public class AnalysisServiceRetryTests
         consulta.Detecciones.Add(deteccion);
         imagen.Detecciones.Add(deteccion);
 
-        _consultaRepository.Setup(r => r.GetAllByUsuarioIdAsync(null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetFilteredAsync(
+                null, It.IsAny<AnalysisHistoryQuery>(), It.IsAny<AnalysisStatus?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([consulta]);
 
         var csv = await _sut.ExportCsvAsync(Guid.NewGuid(), includeAllUsers: true);
@@ -202,7 +204,8 @@ public class AnalysisServiceRetryTests
     {
         var consulta = CreateConsulta(AnalysisStatus.Completed);
         consulta.PersonaNombre = "=HYPERLINK(\"http://malicioso\")";
-        _consultaRepository.Setup(r => r.GetAllByUsuarioIdAsync(null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetFilteredAsync(
+                null, It.IsAny<AnalysisHistoryQuery>(), It.IsAny<AnalysisStatus?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([consulta]);
 
         var csv = await _sut.ExportCsvAsync(Guid.NewGuid(), includeAllUsers: true);

@@ -56,10 +56,43 @@ public class UsersService : IUsersService
             Email = request.Email.Trim(),
             PasswordHash = _passwordHasher.Hash(request.Password),
             RolId = rol.Id,
-            Rol = rol
+            Rol = rol,
+            Dependencia = NormalizarDependencia(request.Dependency)
         };
 
         await _usuarioRepository.AddAsync(usuario, cancellationToken);
+        await _usuarioRepository.SaveChangesAsync(cancellationToken);
+
+        return ToDto(usuario);
+    }
+
+    public async Task<UserListItemDto?> UpdateAsync(Guid id, UpdateUserRequestDto request, CancellationToken cancellationToken = default)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(id, cancellationToken);
+        if (usuario is null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FullName))
+        {
+            throw new InvalidRequestException("El nombre es obligatorio.");
+        }
+
+        if (!Roles.All.Contains(request.Role))
+        {
+            throw new InvalidRequestException($"Rol inválido: '{request.Role}'.");
+        }
+
+        var rol = await _rolRepository.GetByNombreAsync(request.Role, cancellationToken)
+            ?? throw new InvalidRequestException($"Rol inválido: '{request.Role}'.");
+
+        usuario.NombreCompleto = request.FullName.Trim();
+        usuario.RolId = rol.Id;
+        usuario.Rol = rol;
+        usuario.Dependencia = NormalizarDependencia(request.Dependency);
+        usuario.FechaModificacion = DateTime.UtcNow;
+
         await _usuarioRepository.SaveChangesAsync(cancellationToken);
 
         return ToDto(usuario);
@@ -97,11 +130,26 @@ public class UsersService : IUsersService
         return ToDto(usuario);
     }
 
+    private const int MaxDependencia = 150;
+
+    private static string? NormalizarDependencia(string? dependencia)
+    {
+        if (string.IsNullOrWhiteSpace(dependencia))
+        {
+            return null;
+        }
+
+        var limpia = dependencia.Trim();
+        return limpia.Length > MaxDependencia ? limpia[..MaxDependencia] : limpia;
+    }
+
     private static UserListItemDto ToDto(Usuario usuario) => new(
         usuario.Id,
         usuario.NombreCompleto,
         usuario.Email,
         usuario.Rol!.Nombre,
         usuario.EstaActivo,
-        usuario.FechaCreacion);
+        usuario.FechaCreacion,
+        usuario.Dependencia,
+        usuario.UltimoAcceso);
 }

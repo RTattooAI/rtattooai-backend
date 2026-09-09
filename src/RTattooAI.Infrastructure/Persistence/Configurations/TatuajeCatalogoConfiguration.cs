@@ -16,6 +16,9 @@ public class TatuajeCatalogoConfiguration : IEntityTypeConfiguration<TatuajeCata
         builder.Property(t => t.Codigo).IsRequired().HasMaxLength(50);
         builder.Property(t => t.Nombre).HasMaxLength(150);
         builder.Property(t => t.Descripcion).HasMaxLength(500);
+        builder.Property(t => t.Categoria).HasMaxLength(60);
+        builder.Property(t => t.UbicacionCorporal).HasMaxLength(60);
+        builder.Property(t => t.Tags).HasMaxLength(300);
         builder.Property(t => t.ImagenUrl).IsRequired().HasMaxLength(1000);
         builder.Property(t => t.ImagenHash).IsRequired().HasMaxLength(128);
         builder.Property(t => t.Fuente).IsRequired().HasMaxLength(50);

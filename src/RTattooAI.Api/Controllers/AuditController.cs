@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RTattooAI.Api.Extensions;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
+using RTattooAI.Application.Dtos.Audit;
 
 namespace RTattooAI.Api.Controllers;
 
@@ -19,9 +21,30 @@ public class AuditController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetRecent([FromQuery] int limit = 100, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Get(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string? action,
+        [FromQuery] string? userEmail,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _auditService.GetRecentAsync(limit, cancellationToken);
+        var result = await _auditService.GetAsync(
+            new AuditQuery(from, to, action, userEmail, page, pageSize), cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>Exportación del registro para el expediente de validación (RF-17).</summary>
+    [HttpGet("export")]
+    public async Task<IActionResult> ExportCsv(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string? action,
+        [FromQuery] string? userEmail,
+        CancellationToken cancellationToken = default)
+    {
+        var csv = await _auditService.ExportCsvAsync(new AuditQuery(from, to, action, userEmail), cancellationToken);
+        return this.Csv(csv, "rtattooai-auditoria");
     }
 }

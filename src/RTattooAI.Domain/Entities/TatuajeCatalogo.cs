@@ -6,6 +6,20 @@ public class TatuajeCatalogo
     public required string Codigo { get; set; }
     public string? Nombre { get; set; }
     public string? Descripcion { get; set; }
+
+    /// <summary>Familia iconográfica del tatuaje (RF-09): letras, número, animal, religioso…</summary>
+    public string? Categoria { get; set; }
+
+    /// <summary>Zona del cuerpo donde se observó (RF-09): antebrazo, cuello, espalda…</summary>
+    public string? UbicacionCorporal { get; set; }
+
+    /// <summary>
+    /// Etiquetas libres separadas por coma, normalizadas en minúsculas por
+    /// <c>CatalogTags</c>. Se guardan en una sola columna porque el catálogo se filtra
+    /// en memoria y no justifica una tabla aparte.
+    /// </summary>
+    public string? Tags { get; set; }
+
     public Guid? BandaId { get; set; }
     public required string ImagenUrl { get; set; }
     public required string ImagenHash { get; set; }

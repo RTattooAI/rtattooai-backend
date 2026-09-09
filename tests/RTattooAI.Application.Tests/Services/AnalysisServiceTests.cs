@@ -7,6 +7,7 @@ using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Services;
 using RTattooAI.Application.Tests.TestData;
 using RTattooAI.Domain.Entities;
+using RTattooAI.Domain.Enums;
 using Xunit;
 
 namespace RTattooAI.Application.Tests.Services;
@@ -241,11 +242,14 @@ public class AnalysisServiceTests
             Estado = RTattooAI.Domain.Enums.AnalysisStatus.NoDetection
         };
 
-        _consultaRepository.Setup(r => r.GetAllByUsuarioIdAsync((Guid?)usuarioId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([consultaConMatch, consultaSinMatch]);
+        _consultaRepository.Setup(r => r.GetPagedAsync(
+                (Guid?)usuarioId, It.IsAny<AnalysisHistoryQuery>(), It.IsAny<AnalysisStatus?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([consultaConMatch, consultaSinMatch], 2));
 
-        var summaries = await _sut.GetHistoryAsync(usuarioId);
+        var page = await _sut.GetHistoryAsync(usuarioId);
+        var summaries = page.Items;
 
+        Assert.Equal(2, page.Total);
         Assert.Equal(2, summaries.Count);
         Assert.Equal("Barrio 18", summaries[0].TopBand);
         Assert.Equal(0.92, summaries[0].TopSimilarity);

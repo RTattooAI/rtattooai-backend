@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,8 +14,6 @@ namespace RTattooAI.Api.Controllers;
 [Route("api/analyses")]
 public class AnalysesController : ControllerBase
 {
-    private const int MaxHistoryItems = 200;
-
     /// <summary>Diez imágenes de 10 MB más el resto del formulario, con holgura.</summary>
     private const long MaxRequestBytes = 110L * 1024 * 1024;
 
@@ -177,25 +174,37 @@ public class AnalysesController : ControllerBase
     /// cualquier otro valor devuelve únicamente el del usuario autenticado.
     /// </param>
     [HttpGet]
-    public async Task<IActionResult> GetHistory([FromQuery] string? scope, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetHistory(
+        [FromQuery] string? scope,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string? status,
+        [FromQuery] string? q,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken cancellationToken = default)
     {
         var includeAll = string.Equals(scope, "all", StringComparison.OrdinalIgnoreCase) && User.CanSupervise();
-        var result = await _analysisService.GetHistoryAsync(User.GetUserId(), includeAll, MaxHistoryItems, cancellationToken);
+        var query = new AnalysisHistoryQuery(from, to, status, q, page, pageSize);
+        var result = await _analysisService.GetHistoryAsync(User.GetUserId(), includeAll, query, cancellationToken);
         return Ok(result);
     }
 
     /// <summary>Exporta una fila por detección: es la fuente de las tablas de validación del OE4.</summary>
     [HttpGet("export")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Supervisor}")]
-    public async Task<IActionResult> ExportCsv([FromQuery] string? scope, CancellationToken cancellationToken)
+    public async Task<IActionResult> ExportCsv(
+        [FromQuery] string? scope,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string? status,
+        [FromQuery] string? q,
+        CancellationToken cancellationToken = default)
     {
         var includeAll = !string.Equals(scope, "mine", StringComparison.OrdinalIgnoreCase);
-        var csv = await _analysisService.ExportCsvAsync(User.GetUserId(), includeAll, cancellationToken);
+        var query = new AnalysisHistoryQuery(from, to, status, q);
+        var csv = await _analysisService.ExportCsvAsync(User.GetUserId(), includeAll, query, cancellationToken);
 
-        // BOM UTF-8: sin el, Excel en Windows abre el CSV con los acentos rotos.
-        var content = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv)).ToArray();
-        var fileName = $"rtattooai-validacion-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv";
-
-        return File(content, "text/csv", fileName);
+        return this.Csv(csv, "rtattooai-validacion");
     }
 }

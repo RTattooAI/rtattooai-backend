@@ -6,6 +6,7 @@ using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
 using RTattooAI.Application.Dtos.Analyses;
 using RTattooAI.Application.Dtos.Catalog;
+using RTattooAI.Application.Dtos.Common;
 using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Validation;
 using RTattooAI.Domain.Entities;
@@ -248,9 +249,17 @@ public class AnalysisService : IAnalysisService
         return await BuildDtoAsync(consulta, cancellationToken);
     }
 
-    public async Task<List<AnalysisSummaryDto>> GetHistoryAsync(Guid usuarioId, bool includeAllUsers = false, int limit = 200, CancellationToken cancellationToken = default)
+    public async Task<PagedResultDto<AnalysisSummaryDto>> GetHistoryAsync(
+        Guid usuarioId,
+        bool includeAllUsers = false,
+        AnalysisHistoryQuery? query = null,
+        CancellationToken cancellationToken = default)
     {
-        var consultas = await _consultaRepository.GetAllByUsuarioIdAsync(includeAllUsers ? null : usuarioId, limit, cancellationToken);
+        query ??= new AnalysisHistoryQuery();
+        var estado = ParseStatus(query.Status);
+
+        var (consultas, total) = await _consultaRepository.GetPagedAsync(
+            includeAllUsers ? null : usuarioId, query, estado, cancellationToken);
 
         var conPersona = consultas.Count(c => c.PersonaNombre is not null || c.PersonaDocumento is not null);
         if (conPersona > 0)
@@ -260,8 +269,22 @@ public class AnalysisService : IAnalysisService
                 usuarioId, conPersona, consultas.Count);
         }
 
-        return consultas.Select(ToSummaryDto).ToList();
+        return new PagedResultDto<AnalysisSummaryDto>(
+            [.. consultas.Select(ToSummaryDto)], total, query.NormalizedPage, query.NormalizedPageSize);
     }
+
+    /// <summary>
+    /// Traduce el estado del contrato al del dominio. Un valor desconocido se ignora en
+    /// vez de fallar: un filtro mal escrito no debe impedir ver el historial.
+    /// </summary>
+    private static AnalysisStatus? ParseStatus(string? status) => status?.Trim().ToLowerInvariant() switch
+    {
+        "completed" => AnalysisStatus.Completed,
+        "processing" => AnalysisStatus.Processing,
+        "no_detection" => AnalysisStatus.NoDetection,
+        "failed" => AnalysisStatus.Failed,
+        _ => null
+    };
 
     public async Task<List<ReviewItemDto>> GetPendingReviewsAsync(CancellationToken cancellationToken = default)
     {
@@ -289,9 +312,12 @@ public class AnalysisService : IAnalysisService
         }).ToList();
     }
 
-    public async Task<string> ExportCsvAsync(Guid usuarioId, bool includeAllUsers, CancellationToken cancellationToken = default)
+    public async Task<string> ExportCsvAsync(Guid usuarioId, bool includeAllUsers, AnalysisHistoryQuery? query = null, CancellationToken cancellationToken = default)
     {
-        var consultas = await _consultaRepository.GetAllByUsuarioIdAsync(includeAllUsers ? null : usuarioId, int.MaxValue, cancellationToken);
+        query ??= new AnalysisHistoryQuery();
+
+        var consultas = await _consultaRepository.GetFilteredAsync(
+            includeAllUsers ? null : usuarioId, query, ParseStatus(query.Status), cancellationToken);
 
         var csv = new StringBuilder();
         csv.AppendLine("analisis_id,codigo,fecha_utc,analista,estado,imagenes,version_modelo,persona,documento," +

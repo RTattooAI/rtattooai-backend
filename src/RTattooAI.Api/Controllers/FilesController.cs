@@ -19,7 +19,8 @@ public partial class FilesController : ControllerBase
     {
         [".jpg"] = "image/jpeg",
         [".jpeg"] = "image/jpeg",
-        [".png"] = "image/png"
+        [".png"] = "image/png",
+        [".webp"] = "image/webp"
     };
 
     private readonly IBlobStorage _blobStorage;

@@ -1,5 +1,6 @@
 using RTattooAI.Application.Dtos.Analyses;
 using RTattooAI.Application.Dtos.Catalog;
+using RTattooAI.Application.Dtos.Common;
 
 namespace RTattooAI.Application.Abstractions;
 
@@ -32,14 +33,23 @@ public interface IAnalysisService
     /// </param>
     Task<AnalysisDto?> GetByIdAsync(Guid id, Guid usuarioId, bool canViewAll = false, CancellationToken cancellationToken = default);
 
-    Task<List<AnalysisSummaryDto>> GetHistoryAsync(Guid usuarioId, bool includeAllUsers = false, int limit = 200, CancellationToken cancellationToken = default);
+    /// <summary>Historial paginado con filtros de fecha, estado y texto (RF-13).</summary>
+    Task<PagedResultDto<AnalysisSummaryDto>> GetHistoryAsync(
+        Guid usuarioId,
+        bool includeAllUsers = false,
+        AnalysisHistoryQuery? query = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Reprocesa las imágenes que quedaron en estado `failed`, reutilizando las ya almacenadas.</summary>
     Task<AnalysisDto?> RetryAsync(Guid usuarioId, Guid analysisId, bool canViewAll = false, CancellationToken cancellationToken = default);
 
     Task<List<ReviewItemDto>> GetPendingReviewsAsync(CancellationToken cancellationToken = default);
 
-    Task<string> ExportCsvAsync(Guid usuarioId, bool includeAllUsers, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Una fila por detección. Acepta los mismos filtros que el historial para que la
+    /// exportación de la campaña de validación se pueda acotar al periodo medido.
+    /// </summary>
+    Task<string> ExportCsvAsync(Guid usuarioId, bool includeAllUsers, AnalysisHistoryQuery? query = null, CancellationToken cancellationToken = default);
 
     Task<List<CatalogItemDto>?> EnrollDetectionsAsync(Guid usuarioId, Guid analysisId, IReadOnlyList<Guid> detectionIds, CancellationToken cancellationToken = default);
 

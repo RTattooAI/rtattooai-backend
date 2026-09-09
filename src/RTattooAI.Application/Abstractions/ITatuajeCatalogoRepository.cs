@@ -1,3 +1,4 @@
+using RTattooAI.Application.Dtos.Catalog;
 using RTattooAI.Domain.Entities;
 
 namespace RTattooAI.Application.Abstractions;
@@ -9,6 +10,9 @@ public interface ITatuajeCatalogoRepository
     Task AddAsync(TatuajeCatalogo tatuaje, CancellationToken cancellationToken = default);
 
     Task<List<TatuajeCatalogo>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Catálogo filtrado por banda, categoría, ubicación, etiqueta o texto (RF-09).</summary>
+    Task<List<TatuajeCatalogo>> GetFilteredAsync(CatalogQuery query, CancellationToken cancellationToken = default);
 
     Task<TatuajeCatalogo?> GetByCodigoAsync(string codigo, CancellationToken cancellationToken = default);
 

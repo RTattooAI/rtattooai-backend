@@ -59,6 +59,33 @@ public class IaServiceClient : IIaServiceClient
         return new EnrollResultDto(body.CatalogId, body.Band);
     }
 
+    public async Task<IaInfoDto?> GetInfoAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync("/info", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<InfoResponse>(cancellationToken: cancellationToken);
+            if (body is null)
+            {
+                return null;
+            }
+
+            return new IaInfoDto(
+                body.ModelVersion, body.Detector, body.Embedder, body.Head, body.EmbeddingDim,
+                body.Threshold, body.Margin, body.DetConf, body.DetIou,
+                body.GallerySize, body.GalleryIdentities, body.GalleryBands);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     public async Task<bool> PingAsync(CancellationToken cancellationToken = default)
     {
         try

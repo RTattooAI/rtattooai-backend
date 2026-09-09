@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<Deteccion> Detecciones => Set<Deteccion>();
     public DbSet<Coincidencia> Coincidencias => Set<Coincidencia>();
     public DbSet<RegistroAuditoria> RegistrosAuditoria => Set<RegistroAuditoria>();
+    public DbSet<VersionModelo> VersionesModelo => Set<VersionModelo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

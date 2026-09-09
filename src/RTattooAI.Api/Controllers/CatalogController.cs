@@ -31,7 +31,15 @@ public class CatalogController : ControllerBase
     [Consumes("multipart/form-data")]
     [Authorize(Roles = SupervisionRoles)]
     [RequestSizeLimit(12 * 1024 * 1024)]
-    public async Task<IActionResult> Enroll(IFormFile? image, [FromForm] string? band, CancellationToken cancellationToken)
+    public async Task<IActionResult> Enroll(
+        IFormFile? image,
+        [FromForm] string? band,
+        [FromForm] string? name,
+        [FromForm] string? description,
+        [FromForm] string? category,
+        [FromForm] string? bodyLocation,
+        [FromForm] string? tags,
+        CancellationToken cancellationToken)
     {
         if (image is null || image.Length == 0)
         {
@@ -46,8 +54,9 @@ public class CatalogController : ControllerBase
         try
         {
             using var stream = image.OpenReadStream();
+            var metadata = new SaveCatalogMetadataRequestDto(name, description, category, bodyLocation, tags);
             var result = await _catalogService.EnrollAsync(
-                User.GetUserId(), stream, image.FileName, image.ContentType, image.Length, band, cancellationToken);
+                User.GetUserId(), stream, image.FileName, image.ContentType, image.Length, band, metadata, cancellationToken);
             return StatusCode(StatusCodes.Status201Created, result);
         }
         catch (InvalidImageException ex)
@@ -57,9 +66,33 @@ public class CatalogController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? band,
+        [FromQuery] string? category,
+        [FromQuery] string? bodyLocation,
+        [FromQuery] string? tag,
+        [FromQuery] bool? validated,
+        [FromQuery] string? q,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _catalogService.GetAllAsync(cancellationToken);
+        var hasFilters = !string.IsNullOrWhiteSpace(band)
+            || !string.IsNullOrWhiteSpace(category)
+            || !string.IsNullOrWhiteSpace(bodyLocation)
+            || !string.IsNullOrWhiteSpace(tag)
+            || !string.IsNullOrWhiteSpace(q)
+            || validated is not null;
+
+        var query = hasFilters ? new CatalogQuery(band, category, bodyLocation, tag, validated, q) : null;
+
+        var result = await _catalogService.GetAllAsync(query, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Valores presentes en el catálogo, para poblar los filtros del cliente.</summary>
+    [HttpGet("facets")]
+    public async Task<IActionResult> GetFacets(CancellationToken cancellationToken)
+    {
+        var result = await _catalogService.GetFacetsAsync(cancellationToken);
         return Ok(result);
     }
 
@@ -76,6 +109,15 @@ public class CatalogController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>Campos descriptivos de la entrada: nombre, descripción, categoría, ubicación y etiquetas (RF-09).</summary>
+    [HttpPatch("{catalogId}")]
+    [Authorize(Roles = SupervisionRoles)]
+    public async Task<IActionResult> UpdateMetadata(string catalogId, [FromBody] SaveCatalogMetadataRequestDto request, CancellationToken cancellationToken)
+    {
+        var result = await _catalogService.UpdateMetadataAsync(catalogId, request, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
     }
 
     /// <summary>Compuerta de revisión humana: confirma (o revierte) una entrada del catálogo.</summary>

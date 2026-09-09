@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
 using RTattooAI.Application.Dtos.Dashboard;
+using RTattooAI.Application.Export;
 using RTattooAI.Domain.Enums;
 using RTattooAI.Infrastructure.Persistence;
 
@@ -95,5 +96,47 @@ public class DashboardService : IDashboardService
             avgProcessingMs,
             trend,
             topBands);
+    }
+
+    public async Task<string> ExportCsvAsync(CancellationToken cancellationToken = default)
+    {
+        var m = await GetMetricsAsync(cancellationToken);
+
+        var csv = new CsvBuilder("seccion", "metrica", "valor");
+
+        csv.AppendRow("analisis", "total", CsvBuilder.Number(m.TotalAnalyses));
+        csv.AppendRow("analisis", "completados", CsvBuilder.Number(m.AnalysesByStatus.Completed));
+        csv.AppendRow("analisis", "en_proceso", CsvBuilder.Number(m.AnalysesByStatus.Processing));
+        csv.AppendRow("analisis", "sin_deteccion", CsvBuilder.Number(m.AnalysesByStatus.NoDetection));
+        csv.AppendRow("analisis", "fallidos", CsvBuilder.Number(m.AnalysesByStatus.Failed));
+        csv.AppendRow("analisis", "tiempo_medio_ms", CsvBuilder.Number(m.AvgProcessingMs, "F1"));
+
+        csv.AppendRow("detecciones", "pendientes", CsvBuilder.Number(m.DetectionsByValidation.Pending));
+        csv.AppendRow("detecciones", "validadas", CsvBuilder.Number(m.DetectionsByValidation.Validated));
+        csv.AppendRow("detecciones", "en_revision", CsvBuilder.Number(m.DetectionsByValidation.Review));
+        csv.AppendRow("detecciones", "descartadas", CsvBuilder.Number(m.DetectionsByValidation.Dismissed));
+
+        csv.AppendRow("catalogo", "total", CsvBuilder.Number(m.Catalog.Total));
+        csv.AppendRow("catalogo", "validados", CsvBuilder.Number(m.Catalog.Validated));
+        csv.AppendRow("catalogo", "bandas", CsvBuilder.Number(m.Catalog.Bands));
+        csv.AppendRow("catalogo", "sin_banda", CsvBuilder.Number(m.Catalog.PendingBand));
+
+        csv.AppendRow("usuarios", "total", CsvBuilder.Number(m.Users.Total));
+        csv.AppendRow("usuarios", "activos", CsvBuilder.Number(m.Users.Active));
+        csv.AppendRow("usuarios", "analistas", CsvBuilder.Number(m.Users.ByRole.Analyst));
+        csv.AppendRow("usuarios", "supervisores", CsvBuilder.Number(m.Users.ByRole.Supervisor));
+        csv.AppendRow("usuarios", "administradores", CsvBuilder.Number(m.Users.ByRole.Admin));
+
+        foreach (var dia in m.AnalysesLast30Days)
+        {
+            csv.AppendRow("analisis_por_dia", dia.Date.ToString("yyyy-MM-dd"), CsvBuilder.Number(dia.Count));
+        }
+
+        foreach (var banda in m.TopBands)
+        {
+            csv.AppendRow("bandas_frecuentes", banda.Band, CsvBuilder.Number(banda.Count));
+        }
+
+        return csv.ToString();
     }
 }

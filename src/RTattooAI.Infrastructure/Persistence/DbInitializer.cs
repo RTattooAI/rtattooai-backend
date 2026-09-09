@@ -25,6 +25,7 @@ public static class DbInitializer
     public static async Task SeedAsync(AppDbContext context, IPasswordHasher passwordHasher, IConfiguration configuration, ILogger? logger = null)
     {
         var roles = await EnsureRolesAsync(context);
+        await EnsureModeloBaseAsync(context);
 
         if (await context.Usuarios.AnyAsync())
         {
@@ -58,6 +59,41 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         logger?.LogInformation("Cuenta de administración inicial creada para {Email}", admin.Email);
+    }
+
+    /// <summary>
+    /// Deja registrada la versión del modelo con la que se obtuvieron las métricas del
+    /// OE3 (RF-16). Sin esto, el inventario nacería vacío y las consultas ya ejecutadas
+    /// quedarían atribuidas a una versión de la que no consta ninguna medición.
+    /// </summary>
+    public static async Task EnsureModeloBaseAsync(AppDbContext context)
+    {
+        const string identificador = "yolov8m + dinov2-vits14 + head-v1";
+
+        if (await context.VersionesModelo.AnyAsync(v => v.Identificador == identificador))
+        {
+            return;
+        }
+
+        context.VersionesModelo.Add(new VersionModelo
+        {
+            Id = Guid.NewGuid(),
+            Identificador = identificador,
+            Detector = "yolov8m_best.onnx",
+            Embedder = "dinov2-vits14",
+            Cabeza = "embed_head.pt",
+            MetricaMap50 = 0.915,
+            MetricaTop1 = 0.982,
+            MetricaTop5 = 0.994,
+            Umbral = 0.55,
+            Margen = 0.05,
+            Fuente = "OE3 — reports/metrics.md y reports/identification_topk_cmc_far_frr.json",
+            Notas = "Detección medida sobre el conjunto de prueba propio; identificación con galería multivista. " +
+                    "En DeMSI (cross-domain, zero-shot) el mAP@0.5 baja a 0.557.",
+            EsActiva = true
+        });
+
+        await context.SaveChangesAsync();
     }
 
     public static async Task<Dictionary<string, Rol>> EnsureRolesAsync(AppDbContext context)

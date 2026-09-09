@@ -36,6 +36,9 @@ public static class DependencyInjection
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ITatuajeCatalogoRepository, TatuajeCatalogoRepository>();
         services.AddScoped<IBandaCriminalRepository, BandaCriminalRepository>();
+        services.AddScoped<IBandsService, BandsService>();
+        services.AddScoped<IVersionModeloRepository, VersionModeloRepository>();
+        services.AddScoped<IModelsService, ModelsService>();
         services.AddScoped<IAnalysisService, AnalysisService>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton<IFileUrlSigner, FileUrlSigner>();
@@ -43,14 +46,19 @@ public static class DependencyInjection
         // "local" (predeterminado) guarda en disco y sirve las imagenes con URL firmada;
         // "azure" mantiene el camino original con Blob Storage y SAS.
         var storageProvider = configuration["Storage:Provider"] ?? "local";
-        if (string.Equals(storageProvider, "azure", StringComparison.OrdinalIgnoreCase))
+        var encryptionKey = ParseEncryptionKey(configuration["Storage:EncryptionKey"]);
+
+        services.AddSingleton<IBlobStorage>(sp =>
         {
-            services.AddSingleton<IBlobStorage, AzureBlobStorage>();
-        }
-        else
-        {
-            services.AddSingleton<IBlobStorage, LocalFileStorage>();
-        }
+            IBlobStorage almacenamiento = string.Equals(storageProvider, "azure", StringComparison.OrdinalIgnoreCase)
+                ? ActivatorUtilities.CreateInstance<AzureBlobStorage>(sp)
+                : ActivatorUtilities.CreateInstance<LocalFileStorage>(sp);
+
+            // Cifrado en reposo (RNF-06). En Azure lo daba el propio Blob Storage; en
+            // disco propio hay que hacerlo aqui. Sin clave configurada el sistema sigue
+            // funcionando sin cifrar: es preferible a que un despliegue no arranque.
+            return encryptionKey is null ? almacenamiento : new EncryptedBlobStorage(almacenamiento, encryptionKey);
+        });
         services.AddSingleton<IImageCropper, ImageSharpCropper>();
 
         var iaServiceBaseUrl = configuration["IaService:BaseUrl"]
@@ -64,5 +72,36 @@ public static class DependencyInjection
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Clave AES-256 en base64 (32 bytes). Una clave mal formada aborta el arranque en
+    /// vez de degradar en silencio a "sin cifrado": creer que se cifra sin hacerlo es
+    /// peor que no cifrar.
+    /// </summary>
+    private static byte[]? ParseEncryptionKey(string? configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return null;
+        }
+
+        byte[] key;
+        try
+        {
+            key = Convert.FromBase64String(configured.Trim());
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("Storage:EncryptionKey debe estar en base64.", ex);
+        }
+
+        if (key.Length != 32)
+        {
+            throw new InvalidOperationException(
+                $"Storage:EncryptionKey debe decodificar a 32 bytes (AES-256); son {key.Length}.");
+        }
+
+        return key;
     }
 }
