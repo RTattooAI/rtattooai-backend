@@ -68,6 +68,13 @@ public class TatuajeCatalogoRepository : ITatuajeCatalogoRepository
             consulta = consulta.Where(t => t.Validado == query.Validated);
         }
 
+        if (query.PendingBand is not null)
+        {
+            consulta = query.PendingBand.Value
+                ? consulta.Where(t => t.BandaId == null)
+                : consulta.Where(t => t.BandaId != null);
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var texto = query.Search.Trim();

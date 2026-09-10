@@ -13,7 +13,13 @@ public record DetectionDto(
     string Verdict,
     IReadOnlyList<MatchDto> Matches,
     string ValidationStatus,
-    string? ValidationNotes);
+    string? ValidationNotes,
+    /// <summary>
+    /// `band`, `unclassified` o `none`. Ver <c>MatchTypes</c>: distingue una
+    /// coincidencia atribuida a una banda de un reencuentro con un tatuaje que el
+    /// sistema ya había visto pero que nadie ha clasificado todavía.
+    /// </summary>
+    string MatchType = "none");
 
 /// <summary>Una de las fotografías del análisis, con su propio estado de procesamiento.</summary>
 public record AnalysisImageDto(

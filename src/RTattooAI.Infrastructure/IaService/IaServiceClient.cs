@@ -39,7 +39,10 @@ public class IaServiceClient : IIaServiceClient
                 d.Confidence,
                 d.Verdict,
                 d.Matches.Select(m => new IdentifyMatchDto(m.CatalogId, m.Band, m.Similarity, m.ReferenceImageUrl)).ToList()))
-                .ToList());
+                .ToList(),
+            body.Threshold,
+            body.Margin,
+            body.ReviewThreshold);
     }
 
     public async Task<EnrollResultDto> EnrollAsync(Stream image, string fileName, string contentType, string band, CancellationToken cancellationToken = default)

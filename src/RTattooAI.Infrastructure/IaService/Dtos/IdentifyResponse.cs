@@ -7,7 +7,10 @@ internal record IdentifyResponse(
     [property: JsonPropertyName("image_height")] int ImageHeight,
     [property: JsonPropertyName("model_version")] string ModelVersion,
     [property: JsonPropertyName("processing_ms")] int ProcessingMs,
-    [property: JsonPropertyName("detections")] IReadOnlyList<IdentifyDetectionResponse> Detections);
+    [property: JsonPropertyName("detections")] IReadOnlyList<IdentifyDetectionResponse> Detections,
+    [property: JsonPropertyName("threshold")] double Threshold = 0,
+    [property: JsonPropertyName("margin")] double Margin = 0,
+    [property: JsonPropertyName("review_threshold")] double ReviewThreshold = 0);
 
 internal record IdentifyDetectionResponse(
     [property: JsonPropertyName("bbox")] IdentifyBboxResponse Bbox,

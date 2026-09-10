@@ -1,5 +1,6 @@
 using Moq;
 using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Constants;
 using RTattooAI.Application.Dtos.Catalog;
 using RTattooAI.Application.Dtos.Ia;
 using RTattooAI.Application.Services;
@@ -112,7 +113,7 @@ public class CatalogMetadataTests
     }
 
     [Fact]
-    public async Task GetFacetsAsync_ListsOnlyTheValuesThatExist()
+    public async Task GetFacetsAsync_MergesTheStartingVocabularyWithWhatIsAlreadyUsed()
     {
         var uno = Existente();
         uno.Categoria = "Símbolo";
@@ -127,11 +128,52 @@ public class CatalogMetadataTests
         _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([uno, dos]);
 
+        _bandaCriminalRepository.Setup(r => r.GetAllAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
         var facets = await _sut.GetFacetsAsync();
 
-        Assert.Equal(["Símbolo"], facets.Categories);
-        Assert.Equal(["Antebrazo"], facets.BodyLocations);
-        Assert.Equal(["corona", "puntas"], facets.Tags);
+        // Categorías y ubicaciones combinan el vocabulario inicial con lo usado: el
+        // primer registro necesita de dónde elegir, y lo que alguien escriba nuevo
+        // tiene que quedar disponible para el siguiente.
+        Assert.Contains("Símbolo", facets.Categories);
+        Assert.Contains("Corona", facets.Categories);          // del vocabulario inicial
+        Assert.Contains("Antebrazo", facets.BodyLocations);    // usado, no predefinido
+        Assert.Contains("Cuello", facets.BodyLocations);       // del vocabulario inicial
+        Assert.DoesNotContain("Antebrazo", CatalogVocabulary.UbicacionesCorporales);
+
+        // Las bandas y las etiquetas salen solo de los datos: inventar bandas sería
+        // meter ruido en lo único que el sistema afirma.
         Assert.Equal(["Los Pulpos"], facets.Bands);
+        Assert.Equal(["corona", "puntas"], facets.Tags);
+    }
+
+    [Fact]
+    public async Task GetFacetsAsync_OffersTheStartingVocabularyWithAnEmptyCatalogue()
+    {
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _bandaCriminalRepository.Setup(r => r.GetAllAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var facets = await _sut.GetFacetsAsync();
+
+        Assert.Equal(CatalogVocabulary.Categorias.Count, facets.Categories.Count);
+        Assert.Equal(CatalogVocabulary.UbicacionesCorporales.Count, facets.BodyLocations.Count);
+        Assert.Empty(facets.Bands);
+        Assert.Empty(facets.Tags);
+    }
+
+    [Fact]
+    public async Task GetFacetsAsync_OffersRegisteredBandsEvenWithoutTattoosYet()
+    {
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _bandaCriminalRepository.Setup(r => r.GetAllAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Barrio 18" }]);
+
+        var facets = await _sut.GetFacetsAsync();
+
+        // Una banda recién dada de alta debe poder elegirse al enrolar el primer
+        // tatuaje; si solo salieran las que ya tienen catálogo, nunca aparecería.
+        Assert.Equal(["Barrio 18"], facets.Bands);
     }
 }

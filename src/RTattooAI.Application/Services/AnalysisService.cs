@@ -161,7 +161,7 @@ public class AnalysisService : IAnalysisService
             .Select(d => new PreviewDetectionDto(
                 new BboxDto(d.Bbox.X, d.Bbox.Y, d.Bbox.Width, d.Bbox.Height),
                 d.Confidence,
-                string.Equals(d.Verdict, "match", StringComparison.OrdinalIgnoreCase) ? "match" : "no_match",
+                NormalizeVerdict(d.Verdict),
                 d.Matches
                     .OrderByDescending(m => m.Similarity)
                     .Select(m => new MatchDto(m.CatalogId, m.Band, m.Similarity, m.ReferenceImageUrl))
@@ -302,7 +302,7 @@ public class AnalysisService : IAnalysisService
                 miniatura is null ? null : _blobStorage.GetReadUrl(miniatura, ImageUrlValidity),
                 d.Confianza,
                 ToContractVerdict(d.Verdict),
-                topMatch?.Banda,
+                BandaDeResumen(topMatch),
                 topMatch?.Similitud,
                 d.ObservacionesPerito,
                 d.ValidadoPor?.NombreCompleto ?? consulta?.Usuario?.NombreCompleto ?? "—",
@@ -512,7 +512,7 @@ public class AnalysisService : IAnalysisService
                     BboxWidth = detection.Bbox.Width,
                     BboxHeight = detection.Bbox.Height,
                     Confianza = detection.Confidence,
-                    Verdict = string.Equals(detection.Verdict, "match", StringComparison.OrdinalIgnoreCase) ? Verdict.Match : Verdict.NoMatch
+                    Verdict = ParseVerdict(detection.Verdict)
                 };
 
                 foreach (var match in detection.Matches)
@@ -597,6 +597,16 @@ public class AnalysisService : IAnalysisService
         }
     }
 
+    /// <summary>
+    /// Banda del mejor candidato para el listado. Una entrada sin banda devolvía una
+    /// cadena vacía, que en el historial se veía igual que "sin coincidencia".
+    /// </summary>
+    private static string? BandaDeResumen(Coincidencia? top) =>
+        top is null ? null : (string.IsNullOrWhiteSpace(top.Banda) ? SinClasificar : top.Banda);
+
+    /// <summary>Etiqueta con la que se muestra un reencuentro sin banda asignada.</summary>
+    public const string SinClasificar = "Sin clasificar";
+
     private AnalysisSummaryDto ToSummaryDto(Consulta consulta)
     {
         var thumbnailUrl = consulta.ImagenMiniaturaUrl is null
@@ -613,7 +623,7 @@ public class AnalysisService : IAnalysisService
             thumbnailUrl,
             ToContractStatus(consulta.Estado),
             consulta.FechaConsulta,
-            topMatch?.Banda,
+            BandaDeResumen(topMatch),
             topMatch?.Similitud,
             consulta.PersonaNombre,
             consulta.PersonaDocumento,
@@ -680,7 +690,30 @@ public class AnalysisService : IAnalysisService
                 catalogImagePaths.TryGetValue(c.CatalogoCodigo, out var imagePath) ? _blobStorage.GetReadUrl(imagePath, ImageUrlValidity) : c.ReferenceImageUrl))
             .ToList(),
         ToContractValidationStatus(d.EstadoValidacion),
-        d.ObservacionesPerito);
+        d.ObservacionesPerito,
+        ResolveMatchType(d));
+
+    /// <summary>
+    /// Una coincidencia con una entrada sin banda no es "pertenece a los Pulpos":
+    /// es "este tatuaje ya se registró en otro caso y nadie lo ha clasificado".
+    /// Presentar ambas cosas igual llevaría al perito a atribuir una pertenencia
+    /// que el sistema nunca afirmó.
+    /// </summary>
+    private static string ResolveMatchType(Deteccion d)
+    {
+        if (d.Verdict == Verdict.Review)
+        {
+            return MatchTypes.Review;
+        }
+
+        if (d.Verdict != Verdict.Match)
+        {
+            return MatchTypes.None;
+        }
+
+        var top = d.Coincidencias.OrderByDescending(c => c.Similitud).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(top?.Banda) ? MatchTypes.Unclassified : MatchTypes.Band;
+    }
 
     private static string NormalizeOrigen(string? source) =>
         string.Equals(source, OrigenImagen.Camara, StringComparison.OrdinalIgnoreCase)
@@ -708,7 +741,26 @@ public class AnalysisService : IAnalysisService
         return $"\"{sanitized.Replace("\"", "\"\"")}\"";
     }
 
-    private static string ToContractVerdict(Verdict verdict) => verdict == Verdict.Match ? "match" : "no_match";
+    private static string ToContractVerdict(Verdict verdict) => verdict switch
+    {
+        Verdict.Match => "match",
+        Verdict.Review => "review",
+        _ => "no_match"
+    };
+
+    /// <summary>
+    /// Un veredicto desconocido se trata como "sin coincidencia". Si el servicio de
+    /// inferencia introduce un valor nuevo, el sistema debe callar antes que afirmar
+    /// algo que no entiende.
+    /// </summary>
+    private static Verdict ParseVerdict(string? verdict) => verdict?.Trim().ToLowerInvariant() switch
+    {
+        "match" => Verdict.Match,
+        "review" => Verdict.Review,
+        _ => Verdict.NoMatch
+    };
+
+    private static string NormalizeVerdict(string? verdict) => ToContractVerdict(ParseVerdict(verdict));
 
     private static string ToContractStatus(AnalysisStatus status) => status switch
     {

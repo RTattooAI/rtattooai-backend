@@ -73,6 +73,7 @@ public class CatalogController : ControllerBase
         [FromQuery] string? tag,
         [FromQuery] bool? validated,
         [FromQuery] string? q,
+        [FromQuery] bool? pendingBand,
         CancellationToken cancellationToken = default)
     {
         var hasFilters = !string.IsNullOrWhiteSpace(band)
@@ -80,9 +81,10 @@ public class CatalogController : ControllerBase
             || !string.IsNullOrWhiteSpace(bodyLocation)
             || !string.IsNullOrWhiteSpace(tag)
             || !string.IsNullOrWhiteSpace(q)
-            || validated is not null;
+            || validated is not null
+            || pendingBand is not null;
 
-        var query = hasFilters ? new CatalogQuery(band, category, bodyLocation, tag, validated, q) : null;
+        var query = hasFilters ? new CatalogQuery(band, category, bodyLocation, tag, validated, q, pendingBand) : null;
 
         var result = await _catalogService.GetAllAsync(query, cancellationToken);
         return Ok(result);

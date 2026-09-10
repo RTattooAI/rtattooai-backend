@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Constants;
 using RTattooAI.Application.Dtos.Catalog;
 using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Validation;
@@ -162,14 +163,22 @@ public class CatalogService : ICatalogService
         return items.Select(t => ToDto(t, t.Banda?.Nombre)).ToList();
     }
 
+    /// <summary>
+    /// Valores para los desplegables. Las categorías y ubicaciones combinan el
+    /// vocabulario inicial con lo que ya se ha usado, de modo que el primer registro
+    /// tenga de dónde elegir y los valores nuevos queden disponibles para el siguiente.
+    /// Las bandas y las etiquetas salen solo de los datos: inventar bandas sería
+    /// meter ruido en lo único que el sistema afirma.
+    /// </summary>
     public async Task<CatalogFacetsDto> GetFacetsAsync(CancellationToken cancellationToken = default)
     {
         var items = await _tatuajeCatalogoRepository.GetAllAsync(cancellationToken);
+        var bandas = await _bandaCriminalRepository.GetAllAsync(incluirInactivas: false, cancellationToken);
 
         return new CatalogFacetsDto(
-            Distintos(items.Select(t => t.Banda?.Nombre)),
-            Distintos(items.Select(t => t.Categoria)),
-            Distintos(items.Select(t => t.UbicacionCorporal)),
+            Distintos(bandas.Select(b => b.Nombre).Concat(items.Select(t => t.Banda?.Nombre))),
+            Distintos(items.Select(t => t.Categoria).Concat(CatalogVocabulary.Categorias)),
+            Distintos(items.Select(t => t.UbicacionCorporal).Concat(CatalogVocabulary.UbicacionesCorporales)),
             [.. items.SelectMany(t => CatalogTags.Split(t.Tags)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
     }
 
