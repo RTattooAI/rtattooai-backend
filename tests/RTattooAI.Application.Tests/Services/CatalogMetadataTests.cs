@@ -149,6 +149,34 @@ public class CatalogMetadataTests
     }
 
     [Fact]
+    public async Task GetFacetsAsync_DoesNotOfferTheSameCategoryTwiceBecauseOfAnAccent()
+    {
+        // Caso real observado en la aplicacion desplegada: una ficha guardada como
+        // "Simbolo" convivia en el desplegable con el "Símbolo" del vocabulario. La
+        // base usa colacion CI_AS, que ignora mayusculas pero no acentos.
+        var item = Existente();
+        item.Categoria = "Simbolo";
+        item.UbicacionCorporal = "cuello";
+
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([item]);
+        _bandaCriminalRepository.Setup(r => r.GetAllAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var facets = await _sut.GetFacetsAsync();
+
+        // Sobrevive la grafia del vocabulario, no la que alguien escribio.
+        Assert.Contains("Símbolo", facets.Categories);
+        Assert.DoesNotContain("Simbolo", facets.Categories);
+        Assert.Contains("Cuello", facets.BodyLocations);
+        Assert.DoesNotContain("cuello", facets.BodyLocations);
+
+        // Y no aparece ninguna entrada de mas: el catalogo no aporta valores nuevos.
+        Assert.Equal(CatalogVocabulary.Categorias.Count, facets.Categories.Count);
+        Assert.Equal(CatalogVocabulary.UbicacionesCorporales.Count, facets.BodyLocations.Count);
+    }
+
+    [Fact]
     public async Task GetFacetsAsync_OffersTheStartingVocabularyWithAnEmptyCatalogue()
     {
         _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);

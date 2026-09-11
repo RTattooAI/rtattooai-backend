@@ -176,9 +176,13 @@ public class CatalogService : ICatalogService
         var bandas = await _bandaCriminalRepository.GetAllAsync(incluirInactivas: false, cancellationToken);
 
         return new CatalogFacetsDto(
+            // Las bandas son entidades reales: dos que solo difieran en una tilde son
+            // dos bandas, y unificarlas aqui dejaria una sin poder filtrarse.
             Distintos(bandas.Select(b => b.Nombre).Concat(items.Select(t => t.Banda?.Nombre))),
-            Distintos(items.Select(t => t.Categoria).Concat(CatalogVocabulary.Categorias)),
-            Distintos(items.Select(t => t.UbicacionCorporal).Concat(CatalogVocabulary.UbicacionesCorporales)),
+            // Categoria y ubicacion si se unifican ignorando tildes, y el vocabulario
+            // va primero para que la grafia que se ofrezca sea la suya.
+            TextoCanonico.Distintos(CatalogVocabulary.Categorias.Concat(items.Select(t => t.Categoria))),
+            TextoCanonico.Distintos(CatalogVocabulary.UbicacionesCorporales.Concat(items.Select(t => t.UbicacionCorporal))),
             [.. items.SelectMany(t => CatalogTags.Split(t.Tags)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
     }
 
@@ -198,8 +202,12 @@ public class CatalogService : ICatalogService
 
         tatuaje.Nombre = Recortar(metadata.Name, MaxNombre);
         tatuaje.Descripcion = Recortar(metadata.Description, MaxDescripcion);
-        tatuaje.Categoria = Recortar(metadata.Category, MaxCategoria);
-        tatuaje.UbicacionCorporal = Recortar(metadata.BodyLocation, MaxUbicacion);
+        // Se guarda la grafia del vocabulario cuando el valor escrito corresponde a
+        // una de sus entradas: asi «simbolo» y «Símbolo» no acaban siendo dos.
+        tatuaje.Categoria = Recortar(
+            TextoCanonico.Canonizar(metadata.Category, CatalogVocabulary.Categorias), MaxCategoria);
+        tatuaje.UbicacionCorporal = Recortar(
+            TextoCanonico.Canonizar(metadata.BodyLocation, CatalogVocabulary.UbicacionesCorporales), MaxUbicacion);
         tatuaje.Tags = CatalogTags.Normalize(metadata.Tags);
     }
 
