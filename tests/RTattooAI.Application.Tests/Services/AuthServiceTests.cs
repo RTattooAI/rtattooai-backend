@@ -1,6 +1,7 @@
 using Moq;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Dtos.Auth;
+using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Services;
 using RTattooAI.Domain.Entities;
 using Xunit;
@@ -86,5 +87,48 @@ public class AuthServiceTests
 
         Assert.Null(result);
         _jwtTokenGenerator.Verify(j => j.Generate(It.IsAny<Usuario>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_StoresTheNewHash_WhenCurrentPasswordMatches()
+    {
+        var usuario = CreateUsuario();
+        _usuarioRepository.Setup(r => r.GetByIdAsync(usuario.Id, default)).ReturnsAsync(usuario);
+        _passwordHasher.Setup(p => p.Verify("correct-password", "hashed")).Returns(true);
+        _passwordHasher.Setup(p => p.Hash("Nueva2026x")).Returns("new-hash");
+
+        var changed = await _sut.ChangePasswordAsync(usuario.Id, new ChangePasswordRequestDto("correct-password", "Nueva2026x"));
+
+        Assert.True(changed);
+        Assert.Equal("new-hash", usuario.PasswordHash);
+        _usuarioRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_ChangesNothing_WhenCurrentPasswordIsWrong()
+    {
+        var usuario = CreateUsuario();
+        _usuarioRepository.Setup(r => r.GetByIdAsync(usuario.Id, default)).ReturnsAsync(usuario);
+        _passwordHasher.Setup(p => p.Verify("wrong-password", "hashed")).Returns(false);
+
+        var changed = await _sut.ChangePasswordAsync(usuario.Id, new ChangePasswordRequestDto("wrong-password", "Nueva2026x"));
+
+        Assert.False(changed);
+        Assert.Equal("hashed", usuario.PasswordHash);
+        _usuarioRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_RejectsANewPasswordThatBreaksThePolicy()
+    {
+        var usuario = CreateUsuario();
+        _usuarioRepository.Setup(r => r.GetByIdAsync(usuario.Id, default)).ReturnsAsync(usuario);
+        _passwordHasher.Setup(p => p.Verify("correct-password", "hashed")).Returns(true);
+
+        await Assert.ThrowsAsync<InvalidRequestException>(() =>
+            _sut.ChangePasswordAsync(usuario.Id, new ChangePasswordRequestDto("correct-password", "soloLetrasSinNumeros")));
+
+        Assert.Equal("hashed", usuario.PasswordHash);
+        _usuarioRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }
