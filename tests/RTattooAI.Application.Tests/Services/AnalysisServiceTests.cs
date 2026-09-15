@@ -336,8 +336,11 @@ public class AnalysisServiceTests
             .ReturnsAsync([1, 2, 3]);
         _imageCropper.Setup(c => c.CropToPng(It.IsAny<byte[]>(), 10, 20, 100, 80))
             .Returns([9, 9, 9]);
-        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), "image/png", string.Empty, It.IsAny<CancellationToken>()))
+        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), "image/png", string.Empty, "tat_00099", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnrollResultDto("tat_00099", string.Empty));
+        // El código lo decide el catálogo: con tat_00098 ocupado, se pide tat_00099.
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new TatuajeCatalogo { Codigo = "tat_00098", ImagenUrl = "x", ImagenHash = "x", Fuente = "carga_manual" }]);
 
         TatuajeCatalogo? captured = null;
         _tatuajeCatalogoRepository.Setup(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()))

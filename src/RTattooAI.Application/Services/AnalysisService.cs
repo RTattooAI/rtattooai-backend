@@ -403,61 +403,80 @@ public class AnalysisService : IAnalysisService
         var imagenesPorId = consulta.Imagenes.ToDictionary(i => i.Id);
         var descargas = new Dictionary<Guid, byte[]>();
 
-        var results = new List<CatalogItemDto>();
-        foreach (var deteccion in detecciones)
+        // El código lo decide el catálogo, no la galería. Fue un código repartido por la
+        // galería y rechazado por la base lo que el 11/09/2026 dejó un tatuaje con la
+        // banda de otro (ver GalleryEnrollment).
+        var ocupados = (await _tatuajeCatalogoRepository.GetAllAsync(cancellationToken))
+            .Select(t => t.Codigo)
+            .ToHashSet(StringComparer.Ordinal);
+        var enrolados = new List<string>();
+
+        try
         {
-            if (!imagenesPorId.TryGetValue(deteccion.ConsultaImagenId, out var imagen))
+            var results = new List<CatalogItemDto>();
+            foreach (var deteccion in detecciones)
             {
-                throw new InvalidRequestException("La detección no tiene una imagen asociada válida.");
+                if (!imagenesPorId.TryGetValue(deteccion.ConsultaImagenId, out var imagen))
+                {
+                    throw new InvalidRequestException("La detección no tiene una imagen asociada válida.");
+                }
+
+                if (!descargas.TryGetValue(imagen.Id, out var originalBytes))
+                {
+                    originalBytes = await _blobStorage.DownloadAsync(imagen.ImagenUrl, cancellationToken);
+                    descargas[imagen.Id] = originalBytes;
+                }
+
+                var cropBytes = _imageCropper.CropToPng(originalBytes, deteccion.BboxX, deteccion.BboxY, deteccion.BboxWidth, deteccion.BboxHeight);
+                var cropHash = Convert.ToHexString(SHA256.HashData(cropBytes)).ToLowerInvariant();
+
+                var codigo = await GalleryEnrollment.EnrollWithFreshCodeAsync(
+                    _iaServiceClient, ocupados, cropBytes, $"{deteccion.Id}.png", "image/png", string.Empty, cancellationToken);
+                enrolados.Add(codigo);
+
+                var tatuajeId = Guid.NewGuid();
+                var blobPath = $"catalogo/{tatuajeId}/original.png";
+                using var uploadStream = new MemoryStream(cropBytes);
+                await _blobStorage.UploadAsync(blobPath, uploadStream, "image/png", cancellationToken);
+
+                var tatuaje = new TatuajeCatalogo
+                {
+                    Id = tatuajeId,
+                    Codigo = codigo,
+                    BandaId = null,
+                    ConsultaOrigenId = consulta.Id,
+                    ImagenUrl = blobPath,
+                    ImagenHash = cropHash,
+                    Fuente = FuenteDeteccionAnalisis,
+                    Validado = false,
+                    FechaRegistro = DateTime.UtcNow,
+                    RegistradoPorId = usuarioId
+                };
+
+                await _tatuajeCatalogoRepository.AddAsync(tatuaje, cancellationToken);
+
+                results.Add(new CatalogItemDto(
+                    tatuaje.Codigo,
+                    null,
+                    _blobStorage.GetReadUrl(tatuaje.ImagenUrl, ImageUrlValidity),
+                    tatuaje.Fuente,
+                    tatuaje.RegistradoPorId,
+                    tatuaje.FechaRegistro,
+                    tatuaje.Validado,
+                    tatuaje.ConsultaOrigenId));
             }
 
-            if (!descargas.TryGetValue(imagen.Id, out var originalBytes))
-            {
-                originalBytes = await _blobStorage.DownloadAsync(imagen.ImagenUrl, cancellationToken);
-                descargas[imagen.Id] = originalBytes;
-            }
+            await _tatuajeCatalogoRepository.SaveChangesAsync(cancellationToken);
 
-            var cropBytes = _imageCropper.CropToPng(originalBytes, deteccion.BboxX, deteccion.BboxY, deteccion.BboxWidth, deteccion.BboxHeight);
-            var cropHash = Convert.ToHexString(SHA256.HashData(cropBytes)).ToLowerInvariant();
-
-            using var enrollStream = new MemoryStream(cropBytes);
-            var enrollResult = await _iaServiceClient.EnrollAsync(enrollStream, $"{deteccion.Id}.png", "image/png", string.Empty, cancellationToken);
-
-            var tatuajeId = Guid.NewGuid();
-            var blobPath = $"catalogo/{tatuajeId}/original.png";
-            using var uploadStream = new MemoryStream(cropBytes);
-            await _blobStorage.UploadAsync(blobPath, uploadStream, "image/png", cancellationToken);
-
-            var tatuaje = new TatuajeCatalogo
-            {
-                Id = tatuajeId,
-                Codigo = enrollResult.CatalogId,
-                BandaId = null,
-                ConsultaOrigenId = consulta.Id,
-                ImagenUrl = blobPath,
-                ImagenHash = cropHash,
-                Fuente = FuenteDeteccionAnalisis,
-                Validado = false,
-                FechaRegistro = DateTime.UtcNow,
-                RegistradoPorId = usuarioId
-            };
-
-            await _tatuajeCatalogoRepository.AddAsync(tatuaje, cancellationToken);
-
-            results.Add(new CatalogItemDto(
-                tatuaje.Codigo,
-                null,
-                _blobStorage.GetReadUrl(tatuaje.ImagenUrl, ImageUrlValidity),
-                tatuaje.Fuente,
-                tatuaje.RegistradoPorId,
-                tatuaje.FechaRegistro,
-                tatuaje.Validado,
-                tatuaje.ConsultaOrigenId));
+            return results;
         }
-
-        await _tatuajeCatalogoRepository.SaveChangesAsync(cancellationToken);
-
-        return results;
+        catch (Exception ex) when (enrolados.Count > 0)
+        {
+            _logger.LogError(ex, "El enrolamiento desde la consulta {ConsultaId} no se guardó; se retiran de la galería {Codigos}",
+                consulta.Id, string.Join(", ", enrolados));
+            await GalleryEnrollment.RollbackAsync(_iaServiceClient, enrolados);
+            throw;
+        }
     }
 
     public async Task<DetectionDto?> ValidateDetectionAsync(Guid usuarioId, Guid analysisId, Guid detectionId, string status, string? notes, bool canViewAll = false, CancellationToken cancellationToken = default)

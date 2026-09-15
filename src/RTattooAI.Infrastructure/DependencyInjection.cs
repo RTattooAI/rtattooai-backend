@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IBandsService, BandsService>();
         services.AddScoped<IVersionModeloRepository, VersionModeloRepository>();
         services.AddScoped<IModelsService, ModelsService>();
+        services.AddScoped<IGalleryConsistencyService, GalleryConsistencyService>();
         services.AddScoped<IAnalysisService, AnalysisService>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton<IFileUrlSigner, FileUrlSigner>();

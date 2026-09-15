@@ -67,31 +67,44 @@ public class CatalogService : ICatalogService
 
         await _blobStorage.UploadAsync(blobPath, buffer, image.ContentType, cancellationToken);
 
-        buffer.Position = 0;
-        var enrollResult = await _iaServiceClient.EnrollAsync(buffer, fileName, image.ContentType, band, cancellationToken);
+        var ocupados = (await _tatuajeCatalogoRepository.GetAllAsync(cancellationToken))
+            .Select(t => t.Codigo)
+            .ToHashSet(StringComparer.Ordinal);
+        var codigo = await GalleryEnrollment.EnrollWithFreshCodeAsync(
+            _iaServiceClient, ocupados, buffer.ToArray(), fileName, image.ContentType, band, cancellationToken);
 
-        var banda = await _bandaCriminalRepository.GetOrCreateByNombreAsync(band, usuarioId, cancellationToken);
-
-        var tatuaje = new TatuajeCatalogo
+        try
         {
-            Id = tatuajeId,
-            Codigo = enrollResult.CatalogId,
-            BandaId = banda.Id,
-            Banda = banda,
-            ImagenUrl = blobPath,
-            ImagenHash = hash,
-            Fuente = FuenteCargaManual,
-            Validado = false,
-            FechaRegistro = DateTime.UtcNow,
-            RegistradoPorId = usuarioId
-        };
+            var banda = await _bandaCriminalRepository.GetOrCreateByNombreAsync(band, usuarioId, cancellationToken);
 
-        AplicarMetadatos(tatuaje, metadata);
+            var tatuaje = new TatuajeCatalogo
+            {
+                Id = tatuajeId,
+                Codigo = codigo,
+                BandaId = banda.Id,
+                Banda = banda,
+                ImagenUrl = blobPath,
+                ImagenHash = hash,
+                Fuente = FuenteCargaManual,
+                Validado = false,
+                FechaRegistro = DateTime.UtcNow,
+                RegistradoPorId = usuarioId
+            };
 
-        await _tatuajeCatalogoRepository.AddAsync(tatuaje, cancellationToken);
-        await _tatuajeCatalogoRepository.SaveChangesAsync(cancellationToken);
+            AplicarMetadatos(tatuaje, metadata);
 
-        return ToDto(tatuaje, banda.Nombre);
+            await _tatuajeCatalogoRepository.AddAsync(tatuaje, cancellationToken);
+            await _tatuajeCatalogoRepository.SaveChangesAsync(cancellationToken);
+
+            return ToDto(tatuaje, banda.Nombre);
+        }
+        catch
+        {
+            // Sin ficha, esos vectores quedarían en la galería con un código que el
+            // catálogo no conoce (ver GalleryEnrollment).
+            await GalleryEnrollment.RollbackAsync(_iaServiceClient, [codigo]);
+            throw;
+        }
     }
 
     public async Task<CatalogItemDto?> AssignBandAsync(string catalogId, string band, Guid usuarioId, CancellationToken cancellationToken = default)

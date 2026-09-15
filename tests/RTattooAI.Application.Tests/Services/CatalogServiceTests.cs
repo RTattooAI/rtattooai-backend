@@ -34,7 +34,7 @@ public class CatalogServiceTests
             _sut.EnrollAsync(Guid.NewGuid(), CreateImageStream(), "file.txt", "text/plain", 100, "Los Pulpos"));
 
         _tatuajeCatalogoRepository.Verify(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()), Times.Never);
-        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class CatalogServiceTests
         await Assert.ThrowsAsync<InvalidImageException>(() =>
             _sut.EnrollAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 100, "   "));
 
-        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -52,7 +52,9 @@ public class CatalogServiceTests
         var usuarioId = Guid.NewGuid();
         var banda = new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Los Pulpos" };
 
-        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), "Los Pulpos", It.IsAny<CancellationToken>()))
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new TatuajeCatalogo { Codigo = "tat_00889", ImagenUrl = "x", ImagenHash = "x", Fuente = "carga_manual" }]);
+        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), "Los Pulpos", "tat_00890", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnrollResultDto("tat_00890", "Los Pulpos"));
         _bandaCriminalRepository.Setup(r => r.GetOrCreateByNombreAsync("Los Pulpos", usuarioId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(banda);
@@ -216,6 +218,6 @@ public class CatalogServiceTests
         await Assert.ThrowsAsync<InvalidImageException>(() =>
             _sut.EnrollAsync(Guid.NewGuid(), new MemoryStream(TestImages.NotAnImage()), "file.jpg", "image/jpeg", 100, "Los Pulpos"));
 
-        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _iaServiceClient.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

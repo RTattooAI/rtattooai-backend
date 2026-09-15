@@ -23,8 +23,9 @@ public class CatalogMetadataTests
     {
         _blobStorage.Setup(b => b.GetReadUrl(It.IsAny<string>(), It.IsAny<TimeSpan>()))
             .Returns<string, TimeSpan>((path, _) => $"https://blob.test/{path}");
-        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnrollResultDto("tat_00042", "Los Pulpos"));
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _bandaCriminalRepository.Setup(r => r.GetOrCreateByNombreAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BandaCriminal { Id = Guid.NewGuid(), Nombre = "Los Pulpos" });
 

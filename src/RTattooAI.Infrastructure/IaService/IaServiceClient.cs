@@ -1,7 +1,9 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Dtos.Ia;
+using RTattooAI.Application.Exceptions;
 using RTattooAI.Infrastructure.IaService.Dtos;
 
 namespace RTattooAI.Infrastructure.IaService;
@@ -45,21 +47,67 @@ public class IaServiceClient : IIaServiceClient
             body.ReviewThreshold);
     }
 
-    public async Task<EnrollResultDto> EnrollAsync(Stream image, string fileName, string contentType, string band, CancellationToken cancellationToken = default)
+    public async Task<EnrollResultDto> EnrollAsync(Stream image, string fileName, string contentType, string band, string? catalogId = null, CancellationToken cancellationToken = default)
     {
         using var content = new MultipartFormDataContent();
         using var imageContent = new StreamContent(image);
         imageContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         content.Add(imageContent, "image", fileName);
         content.Add(new StringContent(band), "band");
+        if (!string.IsNullOrWhiteSpace(catalogId))
+        {
+            content.Add(new StringContent(catalogId), "catalog_id");
+        }
 
         using var response = await _httpClient.PostAsync("/enroll", content, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Conflict && catalogId is not null)
+        {
+            throw new CatalogIdTakenException(catalogId);
+        }
         response.EnsureSuccessStatusCode();
 
         var body = await response.Content.ReadFromJsonAsync<EnrollResponse>(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("El servicio IA devolvió una respuesta vacía.");
 
         return new EnrollResultDto(body.CatalogId, body.Band);
+    }
+
+    public async Task<bool> RemoveFromGalleryAsync(string catalogId, CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.DeleteAsync($"/gallery/{Uri.EscapeDataString(catalogId)}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    public async Task<GalleryStateDto?> GetGalleryAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync("/gallery", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<GalleryResponse>(cancellationToken: cancellationToken);
+            if (body is null)
+            {
+                return null;
+            }
+
+            return new GalleryStateDto(
+                [.. body.Entries.Select(e => new GalleryEntryDto(e.CatalogId, e.Views, e.ImageSha256))],
+                [.. body.SharedVectors.Select(g => (IReadOnlyList<string>)g)]);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     public async Task<IaInfoDto?> GetInfoAsync(CancellationToken cancellationToken = default)
