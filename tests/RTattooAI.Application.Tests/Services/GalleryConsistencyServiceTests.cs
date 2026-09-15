@@ -55,7 +55,9 @@ public class GalleryConsistencyServiceTests
             new GalleryEntryDto("tat_00001", 17, null),
             new GalleryEntryDto("tat_00026", 5, "h-payaso"),
             new GalleryEntryDto("tat_00027", 5, "h-amigo"),
-            new GalleryEntryDto("tat_00030", 5, "h-sin-vectores")
+            new GalleryEntryDto("tat_00030", 5, "h-sin-vectores"),
+            // El huérfano sigue ahí: reparar nunca lo borra (ver el incidente del 15/09).
+            new GalleryEntryDto("tat_00099", 5, "h-huerfano")
         ],
         []);
 
@@ -90,7 +92,7 @@ public class GalleryConsistencyServiceTests
     }
 
     [Fact]
-    public async Task RepairAsync_ReenrollsFromTheStoredImage_AndRemovesOrphans()
+    public async Task RepairAsync_ReenrollsFromTheStoredImage_ButNeverRemovesOrphans()
     {
         CatalogoDelIncidente();
         _ia.SetupSequence(c => c.GetGalleryAsync(It.IsAny<CancellationToken>()))
@@ -100,17 +102,48 @@ public class GalleryConsistencyServiceTests
         var resultado = await _sut.RepairAsync();
 
         Assert.Equal(["tat_00026", "tat_00027", "tat_00030"], resultado.Reenrolled);
-        Assert.Equal(["tat_00099"], resultado.Removed);
+        // Nunca se borra un huérfano como parte de la reparación (ver el incidente del 15/09:
+        // borró las 25 identidades base porque el catálogo de ese despliegue nunca las tuvo).
+        Assert.Empty(resultado.Removed);
         Assert.Empty(resultado.Failed);
-        Assert.True(resultado.After.Consistent);
+        Assert.Equal(["tat_00099"], resultado.After.OrphansInGallery);
 
-        // Antes de volver a enrolar se quitan los vectores equivocados.
+        // Antes de volver a enrolar se quitan los vectores equivocados de un código que SÍ
+        // está en el catálogo — eso no es borrar un huérfano, es corregir su propio código.
         _ia.Verify(c => c.RemoveFromGalleryAsync("tat_00026", It.IsAny<CancellationToken>()), Times.Once);
         _ia.Verify(c => c.RemoveFromGalleryAsync("tat_00027", It.IsAny<CancellationToken>()), Times.Once);
         _ia.Verify(c => c.RemoveFromGalleryAsync("tat_00030", It.IsAny<CancellationToken>()), Times.Never);
+        // El huérfano jamás se pasa a RemoveFromGalleryAsync.
+        _ia.Verify(c => c.RemoveFromGalleryAsync("tat_00099", It.IsAny<CancellationToken>()), Times.Never);
         _almacenamiento.Verify(b => b.DownloadAsync("catalogo/tat_00026/original.png", It.IsAny<CancellationToken>()), Times.Once);
         // La identidad base sin huella no se toca: sus vectores salen de varias imágenes del dataset.
         _ia.Verify(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), "tat_00001", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RepairAsync_NeverRemovesOrphans_EvenWhenTheyAreMostOfTheGallery()
+    {
+        // Reproduce el incidente del 15/09/2026: un catálogo con 2 fichas y una galería
+        // con 27 identidades, 25 de ellas sin ficha porque nunca se sembraron en SQL.
+        // "Sin ficha" no es "sobra": no debe borrarse ni una.
+        _catalogo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            Ficha("tat_00026", "h-payaso"),
+            Ficha("tat_00027", "h-amigo")
+        ]);
+
+        var identidadesBase = Enumerable.Range(1, 25)
+            .Select(i => new GalleryEntryDto($"tat_{i:00000}", 17, null));
+        var galeria = new GalleryStateDto(
+            [.. identidadesBase, new GalleryEntryDto("tat_00026", 5, "h-payaso"), new GalleryEntryDto("tat_00027", 5, "h-amigo")],
+            []);
+        _ia.Setup(c => c.GetGalleryAsync(It.IsAny<CancellationToken>())).ReturnsAsync(galeria);
+
+        var resultado = await _sut.RepairAsync();
+
+        Assert.Empty(resultado.Removed);
+        Assert.Empty(resultado.Reenrolled);
+        _ia.Verify(c => c.RemoveFromGalleryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

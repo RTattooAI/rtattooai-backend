@@ -7,11 +7,18 @@ using RTattooAI.Domain.Entities;
 namespace RTattooAI.Application.Services;
 
 /// <summary>
-/// Compara el catálogo con la galería del servicio de inferencia y los repara.
+/// Compara el catálogo con la galería del servicio de inferencia y repara lo que el
+/// catálogo puede sustentar con su propia imagen.
 ///
 /// Existe porque la desincronización no da ningún error: el 10/09/2026 se reconstruyó
 /// la galería al reentrenar la cabeza, un tatuaje enrolado desde la aplicación quedó
 /// fuera y nadie lo supo hasta que el sistema atribuyó a otro tatuaje la banda de aquel.
+///
+/// **No borra automáticamente los vectores sin ficha.** El 15/09/2026 lo hacía, y en un
+/// despliegue cuyo catálogo nunca llegó a tener las 25 identidades base de la galería
+/// (existen solo como vectores, sembrados aparte) eso borró las 25 de un pulsazo: "sin
+/// ficha" no implica "sobra", solo que el catálogo no puede dar fe de esa imagen. Los
+/// huérfanos se siguen señalando en <see cref="CheckAsync"/> para que una persona decida.
 /// </summary>
 public class GalleryConsistencyService : IGalleryConsistencyService
 {
@@ -61,7 +68,6 @@ public class GalleryConsistencyService : IGalleryConsistencyService
             .ToList();
 
         var reenrolados = new List<string>();
-        var quitados = new List<string>();
         var fallidos = new List<GalleryRepairFailureDto>();
 
         foreach (var codigo in aReenrolar)
@@ -96,25 +102,14 @@ public class GalleryConsistencyService : IGalleryConsistencyService
             }
         }
 
-        var huerfanos = estado.OrphansInGallery
-            .Concat(estado.SharedVectors.SelectMany(g => g).Where(c => !fichas.ContainsKey(c)))
-            .Distinct(StringComparer.Ordinal);
-
-        foreach (var codigo in huerfanos)
-        {
-            try
-            {
-                await _iaServiceClient.RemoveFromGalleryAsync(codigo, cancellationToken);
-                quitados.Add(codigo);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                fallidos.Add(new GalleryRepairFailureDto(codigo, ex.Message));
-            }
-        }
-
+        // Los vectores sin ficha (`estado.OrphansInGallery`) NO se tocan: el catálogo no
+        // tiene con qué reconstruirlos, y no tener ficha no significa que sobren. Quitar
+        // un código sigue siendo posible, pero como acción explícita y aparte
+        // (`IIaServiceClient.RemoveFromGalleryAsync`), nunca como parte de esta reparación
+        // automática.
         var despues = Clasificar(catalogo, await _iaServiceClient.GetGalleryAsync(cancellationToken));
-        return new GalleryRepairResultDto(reenrolados, quitados, fallidos, despues);
+        // "Removed" queda siempre vacío: ver el porqué en el comentario de la clase.
+        return new GalleryRepairResultDto(reenrolados, [], fallidos, despues);
     }
 
     private static GalleryConsistencyDto Clasificar(IReadOnlyCollection<TatuajeCatalogo> catalogo, GalleryStateDto? galeria)

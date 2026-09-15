@@ -21,6 +21,11 @@ public record GalleryConsistencyDto(
     int Unverified,
     bool Consistent);
 
+/// <param name="Removed">
+/// Siempre vacío: la reparación nunca quita vectores sin ficha (ver
+/// <see cref="GalleryConsistencyService"/>). Se conserva en el contrato por si en el
+/// futuro se ofrece una acción explícita de limpieza, aparte de esta reparación.
+/// </param>
 public record GalleryRepairResultDto(
     IReadOnlyList<string> Reenrolled,
     IReadOnlyList<string> Removed,
