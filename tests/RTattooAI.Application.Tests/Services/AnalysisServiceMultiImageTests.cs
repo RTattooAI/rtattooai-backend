@@ -109,6 +109,25 @@ public class AnalysisServiceMultiImageTests
     }
 
     [Fact]
+    public async Task CreateAsync_KeepsTheSourceOfEachImage_WhenCameraShotsAndFilesAreMixed()
+    {
+        // HU0020: una toma de la cámara no pierde su procedencia por compartir análisis
+        // con una fotografía cargada desde el equipo.
+        SetupIa(ConDetecciones(1));
+        IReadOnlyList<AnalysisImageInput> mixtas =
+        [
+            new AnalysisImageInput(TestImages.JpegStream(), "archivo.jpg", "image/jpeg", 100, "archivo"),
+            new AnalysisImageInput(TestImages.JpegStream(), "captura.jpg", "image/jpeg", 100, "camara")
+        ];
+
+        await _sut.CreateAsync(Guid.NewGuid(), mixtas);
+
+        Assert.Equal(
+            [OrigenImagen.Archivo, OrigenImagen.Camara],
+            _capturada!.Imagenes.OrderBy(i => i.Orden).Select(i => i.Origen));
+    }
+
+    [Fact]
     public async Task CreateAsync_LinksEachDetectionToTheImageItCameFrom()
     {
         SetupIa(ConDetecciones(1), ConDetecciones(2));

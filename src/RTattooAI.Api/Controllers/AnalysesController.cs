@@ -56,12 +56,17 @@ public class AnalysesController : ControllerBase
         var streams = new List<Stream>(archivos.Count);
         try
         {
+            // Un mismo caso mezcla fotografías cargadas y tomas de la cámara: la
+            // procedencia viaja por imagen en `sources`, en el orden de `images`.
+            var origenes = AnalysisImageSources.PerImage([.. Request.Form["sources"]], source, archivos.Count);
+
             var entradas = new List<AnalysisImageInput>(archivos.Count);
-            foreach (var archivo in archivos)
+            for (var i = 0; i < archivos.Count; i++)
             {
+                var archivo = archivos[i];
                 var stream = archivo.OpenReadStream();
                 streams.Add(stream);
-                entradas.Add(new AnalysisImageInput(stream, archivo.FileName, archivo.ContentType, archivo.Length, source ?? "archivo"));
+                entradas.Add(new AnalysisImageInput(stream, archivo.FileName, archivo.ContentType, archivo.Length, origenes[i]));
             }
 
             var result = await _analysisService.CreateAsync(
