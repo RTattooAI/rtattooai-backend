@@ -29,8 +29,9 @@ public class AuditActionFilter : IAsyncActionFilter
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        // El correo del intento de inicio de sesion se lee antes de ejecutar la accion:
-        // despues ya no esta disponible y es lo unico que identifica un intento fallido.
+        // El correo del intento de inicio de sesion (o de recuperacion) se lee antes de
+        // ejecutar la accion: despues ya no esta disponible y es lo unico que identifica
+        // un intento fallido o un intento de enumerar cuentas por "olvide mi contrasena".
         var loginEmail = TryGetLoginEmail(context);
 
         var executed = await next();
@@ -85,14 +86,23 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private static string? TryGetLoginEmail(ActionExecutingContext context)
     {
-        if (!context.HttpContext.Request.Path.StartsWithSegments("/api/auth/login", StringComparison.OrdinalIgnoreCase))
+        var path = context.HttpContext.Request.Path;
+
+        if (path.StartsWithSegments("/api/auth/login", StringComparison.OrdinalIgnoreCase))
         {
-            return null;
+            return context.ActionArguments.Values
+                .OfType<Application.Dtos.Auth.LoginRequestDto>()
+                .FirstOrDefault()?.Email;
         }
 
-        return context.ActionArguments.Values
-            .OfType<Application.Dtos.Auth.LoginRequestDto>()
-            .FirstOrDefault()?.Email;
+        if (path.StartsWithSegments("/api/auth/forgot-password", StringComparison.OrdinalIgnoreCase))
+        {
+            return context.ActionArguments.Values
+                .OfType<Application.Dtos.Auth.ForgotPasswordRequestDto>()
+                .FirstOrDefault()?.Email;
+        }
+
+        return null;
     }
 
     private static Guid? TryGetUserId(ActionExecutingContext context)

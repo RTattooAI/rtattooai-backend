@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<Coincidencia> Coincidencias => Set<Coincidencia>();
     public DbSet<RegistroAuditoria> RegistrosAuditoria => Set<RegistroAuditoria>();
     public DbSet<VersionModelo> VersionesModelo => Set<VersionModelo>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

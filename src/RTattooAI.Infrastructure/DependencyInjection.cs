@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Services;
 using RTattooAI.Infrastructure.Blob;
+using RTattooAI.Infrastructure.Email;
 using RTattooAI.Infrastructure.IaService;
 using RTattooAI.Infrastructure.Imaging;
 using RTattooAI.Infrastructure.Persistence;
@@ -27,6 +29,8 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
         services.AddScoped<IRolRepository, RolRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
+        services.AddSingleton<IPasswordResetLinkBuilder, PasswordResetLinkBuilder>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUsersService, UsersService>();
         services.AddScoped<IDashboardService, RTattooAI.Infrastructure.Services.DashboardService>();
@@ -61,6 +65,27 @@ public static class DependencyInjection
             return encryptionKey is null ? almacenamiento : new EncryptedBlobStorage(almacenamiento, encryptionKey);
         });
         services.AddSingleton<IImageCropper, ImageSharpCropper>();
+
+        // Sin Smtp:Host configurado el correo de "olvidé mi contraseña" no puede salir
+        // de verdad: se registra un envío que solo deja el enlace en el log, para no
+        // impedir que el resto del sistema arranque mientras tanto (ver LoggingEmailSender).
+        var smtpHost = configuration["Smtp:Host"];
+        services.AddSingleton<IEmailSender>(sp =>
+        {
+            if (string.IsNullOrWhiteSpace(smtpHost))
+            {
+                return ActivatorUtilities.CreateInstance<LoggingEmailSender>(sp);
+            }
+
+            return new SmtpEmailSender(
+                smtpHost,
+                configuration.GetValue("Smtp:Port", 587),
+                configuration["Smtp:User"],
+                configuration["Smtp:Password"],
+                configuration["Smtp:From"] ?? "no-responder@rtattooai.local",
+                configuration.GetValue("Smtp:UseStartTls", true),
+                sp.GetRequiredService<ILogger<SmtpEmailSender>>());
+        });
 
         var iaServiceBaseUrl = configuration["IaService:BaseUrl"]
             ?? throw new InvalidOperationException("IaService:BaseUrl no está configurado.");

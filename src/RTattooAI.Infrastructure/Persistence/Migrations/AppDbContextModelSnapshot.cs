@@ -285,6 +285,38 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.ToTable("Detecciones", (string)null);
                 });
 
+            modelBuilder.Entity("RTattooAI.Domain.Entities.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("FechaExpiracion")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaUso")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("PasswordResetTokens", (string)null);
+                });
+
             modelBuilder.Entity("RTattooAI.Domain.Entities.RegistroAuditoria", b =>
                 {
                     b.Property<Guid>("Id")
@@ -610,6 +642,17 @@ namespace RTattooAI.Infrastructure.Persistence.Migrations
                     b.Navigation("ConsultaImagen");
 
                     b.Navigation("ValidadoPor");
+                });
+
+            modelBuilder.Entity("RTattooAI.Domain.Entities.PasswordResetToken", b =>
+                {
+                    b.HasOne("RTattooAI.Domain.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("RTattooAI.Domain.Entities.RegistroAuditoria", b =>

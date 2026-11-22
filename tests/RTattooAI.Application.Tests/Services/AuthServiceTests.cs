@@ -13,11 +13,21 @@ public class AuthServiceTests
     private readonly Mock<IUsuarioRepository> _usuarioRepository = new();
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
     private readonly Mock<IJwtTokenGenerator> _jwtTokenGenerator = new();
+    private readonly Mock<IPasswordResetTokenRepository> _resetTokenRepository = new();
+    private readonly Mock<IPasswordResetLinkBuilder> _resetLinkBuilder = new();
+    private readonly Mock<IEmailSender> _emailSender = new();
     private readonly AuthService _sut;
 
     public AuthServiceTests()
     {
-        _sut = new AuthService(_usuarioRepository.Object, _passwordHasher.Object, _jwtTokenGenerator.Object);
+        _resetLinkBuilder.Setup(b => b.Build(It.IsAny<string>())).Returns<string>(token => $"https://front.test/reset-password?token={token}");
+        _sut = new AuthService(
+            _usuarioRepository.Object,
+            _passwordHasher.Object,
+            _jwtTokenGenerator.Object,
+            _resetTokenRepository.Object,
+            _resetLinkBuilder.Object,
+            _emailSender.Object);
     }
 
     private static Usuario CreateUsuario(bool estaActivo = true) => new()
@@ -130,5 +140,98 @@ public class AuthServiceTests
 
         Assert.Equal("hashed", usuario.PasswordHash);
         _usuarioRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_InvalidatesPendingTokens_CreatesOneAndSendsTheEmail_WhenTheAccountExists()
+    {
+        var usuario = CreateUsuario();
+        _usuarioRepository.Setup(r => r.GetByEmailAsync(usuario.Email, default)).ReturnsAsync(usuario);
+
+        await _sut.RequestPasswordResetAsync(usuario.Email);
+
+        _resetTokenRepository.Verify(r => r.InvalidatePendingForUserAsync(usuario.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _resetTokenRepository.Verify(r => r.AddAsync(
+            It.Is<PasswordResetToken>(t => t.UsuarioId == usuario.Id && !string.IsNullOrEmpty(t.TokenHash) && t.FechaExpiracion > DateTime.UtcNow),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _resetTokenRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _emailSender.Verify(e => e.SendAsync(usuario.Email, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_DoesNothing_WhenTheAccountDoesNotExist()
+    {
+        _usuarioRepository.Setup(r => r.GetByEmailAsync("missing@pnp.gob.pe", default)).ReturnsAsync((Usuario?)null);
+
+        await _sut.RequestPasswordResetAsync("missing@pnp.gob.pe");
+
+        _resetTokenRepository.Verify(r => r.AddAsync(It.IsAny<PasswordResetToken>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSender.Verify(e => e.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_DoesNothing_WhenTheAccountIsInactive()
+    {
+        var usuario = CreateUsuario(estaActivo: false);
+        _usuarioRepository.Setup(r => r.GetByEmailAsync(usuario.Email, default)).ReturnsAsync(usuario);
+
+        await _sut.RequestPasswordResetAsync(usuario.Email);
+
+        _resetTokenRepository.Verify(r => r.AddAsync(It.IsAny<PasswordResetToken>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSender.Verify(e => e.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_StoresTheNewHashAndConsumesTheToken_WhenTheTokenIsValid()
+    {
+        var usuario = CreateUsuario();
+        var resetToken = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuario.Id,
+            TokenHash = "irrelevante-en-la-prueba",
+            FechaExpiracion = DateTime.UtcNow.AddMinutes(10),
+            Usuario = usuario
+        };
+        _resetTokenRepository.Setup(r => r.GetValidByHashAsync(It.IsAny<string>(), default)).ReturnsAsync(resetToken);
+        _passwordHasher.Setup(p => p.Hash("Nueva2026x")).Returns("new-hash");
+
+        var changed = await _sut.ResetPasswordAsync("raw-token", "Nueva2026x");
+
+        Assert.True(changed);
+        Assert.Equal("new-hash", usuario.PasswordHash);
+        Assert.NotNull(resetToken.FechaUso);
+        _resetTokenRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ReturnsFalse_WhenTheTokenIsInvalidOrExpired()
+    {
+        _resetTokenRepository.Setup(r => r.GetValidByHashAsync(It.IsAny<string>(), default)).ReturnsAsync((PasswordResetToken?)null);
+
+        var changed = await _sut.ResetPasswordAsync("raw-token", "Nueva2026x");
+
+        Assert.False(changed);
+        _resetTokenRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_RejectsANewPasswordThatBreaksThePolicy()
+    {
+        var usuario = CreateUsuario();
+        var resetToken = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = usuario.Id,
+            TokenHash = "irrelevante-en-la-prueba",
+            FechaExpiracion = DateTime.UtcNow.AddMinutes(10),
+            Usuario = usuario
+        };
+        _resetTokenRepository.Setup(r => r.GetValidByHashAsync(It.IsAny<string>(), default)).ReturnsAsync(resetToken);
+
+        await Assert.ThrowsAsync<InvalidRequestException>(() => _sut.ResetPasswordAsync("raw-token", "soloLetrasSinNumeros"));
+
+        Assert.Equal("hashed", usuario.PasswordHash);
+        _resetTokenRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

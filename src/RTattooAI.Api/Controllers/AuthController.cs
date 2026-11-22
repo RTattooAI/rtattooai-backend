@@ -49,4 +49,34 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [AllowAnonymous]
+    [EnableRateLimiting("Login")]
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        await _authService.RequestPasswordResetAsync(request.Email, cancellationToken);
+
+        // Siempre el mismo mensaje y el mismo 200, exista o no la cuenta: distinguirlo
+        // permitiría enumerar correos válidos desde una pantalla pública.
+        return Ok(new { message = "Si el correo pertenece a una cuenta, recibirá un enlace para restablecer su contraseña." });
+    }
+
+    [AllowAnonymous]
+    [EnableRateLimiting("Login")]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordWithTokenRequestDto request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var changed = await _authService.ResetPasswordAsync(request.Token, request.NewPassword, cancellationToken);
+            return changed
+                ? NoContent()
+                : BadRequest(new { error = "El enlace no es válido o ya caducó. Solicítelo de nuevo." });
+        }
+        catch (InvalidRequestException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }
