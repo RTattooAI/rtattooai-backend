@@ -702,3 +702,19 @@ Vuelve a enrolar desde la imagen guardada las fichas sin vectores, con vectores 
 ### Detector servido en `.pt`
 
 Desde el 14/09/2026 `GET /info` informa `detector: yolov8m_hardneg.pt` y la versión pasa a `yolov8m-hardneg-pt + dinov2-vits14 + head-v2`. Son los mismos pesos que el ONNX anterior, pero es el formato con el que se calibró `det_conf = 0.60`, y en fotografías no cuadradas daba confianzas distintas (ver `RTattooAI_BITACORA_EXPERIMENTOS.md`, E-13).
+
+---
+
+## J. Validación obligatoria antes de una consulta nueva (noviembre 2026)
+
+### Cambios en `POST /api/analyses`
+
+- Si la consulta más reciente del usuario tiene detecciones con `validationStatus = "pending"`, responde **409**:
+  ```json
+  { "error": "Valide las detecciones de su consulta anterior antes de realizar una nueva.",
+    "pendingAnalysisId": "uuid" }
+  ```
+- Solo cuenta la última consulta del usuario: las anteriores a esta regla no bloquean.
+- Una detección deja de estar pendiente con cualquier decisión del perito (`validated`, `review` o `dismissed`) mediante `PATCH /api/analyses/{id}/detections/{detectionId}/validation`.
+- Las consultas sin detecciones (`no_detection`) o fallidas no bloquean.
+- `POST /api/analyses/preview` (modo en vivo) no guarda nada y no se ve afectado.

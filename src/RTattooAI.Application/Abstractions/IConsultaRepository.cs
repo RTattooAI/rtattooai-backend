@@ -33,6 +33,12 @@ public interface IConsultaRepository
         AnalysisStatus? estado,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Id de la consulta más reciente del usuario si todavía tiene detecciones sin
+    /// validar; `null` si no hay ninguna pendiente.
+    /// </summary>
+    Task<Guid?> GetUltimaPendienteDeValidarAsync(Guid usuarioId, CancellationToken cancellationToken = default);
+
     Task<List<Deteccion>> GetByEstadoValidacionAsync(EstadoValidacion estado, CancellationToken cancellationToken = default);
 
     Task SaveChangesAsync(CancellationToken cancellationToken = default);

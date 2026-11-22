@@ -42,6 +42,22 @@ public class ConsultaRepository : IConsultaRepository
             .Take(limit)
             .ToListAsync(cancellationToken);
 
+    public async Task<Guid?> GetUltimaPendienteDeValidarAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        // Solo cuenta la última consulta: las anteriores a esta regla no bloquean.
+        var ultima = await _context.Consultas
+            .Where(c => c.UsuarioId == usuarioId)
+            .OrderByDescending(c => c.FechaConsulta)
+            .Select(c => new
+            {
+                c.Id,
+                Pendientes = c.Detecciones.Any(d => d.EstadoValidacion == EstadoValidacion.Pendiente)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return ultima is { Pendientes: true } ? ultima.Id : null;
+    }
+
     public async Task<(List<Consulta> Items, int Total)> GetPagedAsync(
         Guid? usuarioId,
         AnalysisHistoryQuery query,

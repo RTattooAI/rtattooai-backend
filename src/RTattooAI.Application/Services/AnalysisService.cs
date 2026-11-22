@@ -64,6 +64,14 @@ public class AnalysisService : IAnalysisService
             throw new InvalidImageException($"Un análisis admite como máximo {MaxImagesPerAnalysis} imágenes.");
         }
 
+        // Cada resultado lo cierra el perito: no se abre una consulta nueva mientras la
+        // anterior tenga detecciones sin validar.
+        var pendiente = await _consultaRepository.GetUltimaPendienteDeValidarAsync(usuarioId, cancellationToken);
+        if (pendiente is { } pendienteId)
+        {
+            throw new PendingValidationException(pendienteId);
+        }
+
         // Se validan y bufferizan todas antes de escribir nada: si una es inválida, el
         // análisis no llega a crearse a medias.
         var preparadas = new List<(AnalysisImageInput Input, byte[] Bytes, ValidatedImage Meta)>();

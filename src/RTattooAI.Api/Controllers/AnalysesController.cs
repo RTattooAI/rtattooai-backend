@@ -78,6 +78,10 @@ public class AnalysesController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (PendingValidationException ex)
+        {
+            return Conflict(new { error = ex.Message, pendingAnalysisId = ex.PendingAnalysisId });
+        }
         finally
         {
             foreach (var stream in streams)

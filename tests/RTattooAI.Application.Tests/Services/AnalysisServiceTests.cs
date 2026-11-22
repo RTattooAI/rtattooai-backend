@@ -49,6 +49,21 @@ public class AnalysisServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsPendingValidation_WhenPreviousAnalysisHasUnvalidatedDetections()
+    {
+        var usuarioId = Guid.NewGuid();
+        var pendiente = Guid.NewGuid();
+        _consultaRepository.Setup(r => r.GetUltimaPendienteDeValidarAsync(usuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendiente);
+
+        var ex = await Assert.ThrowsAsync<PendingValidationException>(() => _sut.CreateAsync(usuarioId, OneImage()));
+
+        Assert.Equal(pendiente, ex.PendingAnalysisId);
+        _consultaRepository.Verify(r => r.AddAsync(It.IsAny<Consulta>(), It.IsAny<CancellationToken>()), Times.Never);
+        _iaServiceClient.Verify(c => c.IdentifyAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsInvalidImageException_WhenFileExceedsMaxSize()
     {
         await Assert.ThrowsAsync<InvalidImageException>(() =>
