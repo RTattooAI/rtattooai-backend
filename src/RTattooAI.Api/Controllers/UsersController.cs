@@ -40,6 +40,34 @@ public class UsersController : ControllerBase
         }
     }
 
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserRequestDto request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _usersService.UpdateAsync(id, request, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (InvalidRequestException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:guid}/password")]
+    public async Task<IActionResult> ResetPassword(Guid id, [FromBody] ResetPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _usersService.ResetPasswordAsync(id, request.Password, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (InvalidRequestException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPatch("{id:guid}/status")]
     public async Task<IActionResult> SetStatus(Guid id, [FromBody] UpdateUserStatusRequestDto request, CancellationToken cancellationToken)
     {

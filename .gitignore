@@ -19,3 +19,6 @@ appsettings.*.local.json
 
 ## Logs locales
 *.log
+
+## Cobertura
+TestResults/

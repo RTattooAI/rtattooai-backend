@@ -22,6 +22,13 @@ public class DeteccionConfiguration : IEntityTypeConfiguration<Deteccion>
             .HasForeignKey(d => d.ConsultaId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Sin cascada: la consulta ya borra en cascada por ConsultaId y SQL Server no
+        // admite dos caminos de borrado en cascada hacia la misma tabla.
+        builder.HasOne(d => d.ConsultaImagen)
+            .WithMany(i => i.Detecciones)
+            .HasForeignKey(d => d.ConsultaImagenId)
+            .OnDelete(DeleteBehavior.NoAction);
+
         builder.HasOne(d => d.ValidadoPor)
             .WithMany()
             .HasForeignKey(d => d.ValidadoPorId)

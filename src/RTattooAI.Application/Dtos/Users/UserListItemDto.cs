@@ -6,4 +6,6 @@ public record UserListItemDto(
     string Email,
     string Role,
     bool Active,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? Dependency = null,
+    DateTime? LastAccessAt = null);

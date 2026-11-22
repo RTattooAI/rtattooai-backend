@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Services;
 using RTattooAI.Infrastructure.Blob;
+using RTattooAI.Infrastructure.Email;
 using RTattooAI.Infrastructure.IaService;
 using RTattooAI.Infrastructure.Imaging;
 using RTattooAI.Infrastructure.Persistence;
@@ -17,23 +19,73 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("Default")));
+            options.UseSqlServer(
+                configuration.GetConnectionString("Default"),
+                // El contenedor de SQL Server tarda en aceptar conexiones tras arrancar,
+                // y una caida momentanea no deberia tumbar una peticion en curso.
+                sql => sql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
 
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IUsuarioRepository, UsuarioRepository>();
         services.AddScoped<IRolRepository, RolRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
+        services.AddSingleton<IPasswordResetLinkBuilder, PasswordResetLinkBuilder>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUsersService, UsersService>();
         services.AddScoped<IDashboardService, RTattooAI.Infrastructure.Services.DashboardService>();
 
         services.AddScoped<IConsultaRepository, ConsultaRepository>();
+        services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ITatuajeCatalogoRepository, TatuajeCatalogoRepository>();
         services.AddScoped<IBandaCriminalRepository, BandaCriminalRepository>();
+        services.AddScoped<IBandsService, BandsService>();
+        services.AddScoped<IVersionModeloRepository, VersionModeloRepository>();
+        services.AddScoped<IModelsService, ModelsService>();
+        services.AddScoped<IGalleryConsistencyService, GalleryConsistencyService>();
         services.AddScoped<IAnalysisService, AnalysisService>();
         services.AddScoped<ICatalogService, CatalogService>();
-        services.AddSingleton<IBlobStorage, AzureBlobStorage>();
+        services.AddSingleton<IFileUrlSigner, FileUrlSigner>();
+
+        // "local" (predeterminado) guarda en disco y sirve las imagenes con URL firmada;
+        // "azure" mantiene el camino original con Blob Storage y SAS.
+        var storageProvider = configuration["Storage:Provider"] ?? "local";
+        var encryptionKey = ParseEncryptionKey(configuration["Storage:EncryptionKey"]);
+
+        services.AddSingleton<IBlobStorage>(sp =>
+        {
+            IBlobStorage almacenamiento = string.Equals(storageProvider, "azure", StringComparison.OrdinalIgnoreCase)
+                ? ActivatorUtilities.CreateInstance<AzureBlobStorage>(sp)
+                : ActivatorUtilities.CreateInstance<LocalFileStorage>(sp);
+
+            // Cifrado en reposo (RNF-06). En Azure lo daba el propio Blob Storage; en
+            // disco propio hay que hacerlo aqui. Sin clave configurada el sistema sigue
+            // funcionando sin cifrar: es preferible a que un despliegue no arranque.
+            return encryptionKey is null ? almacenamiento : new EncryptedBlobStorage(almacenamiento, encryptionKey);
+        });
         services.AddSingleton<IImageCropper, ImageSharpCropper>();
+
+        // Sin Smtp:Host configurado el correo de "olvidé mi contraseña" no puede salir
+        // de verdad: se registra un envío que solo deja el enlace en el log, para no
+        // impedir que el resto del sistema arranque mientras tanto (ver LoggingEmailSender).
+        var smtpHost = configuration["Smtp:Host"];
+        services.AddSingleton<IEmailSender>(sp =>
+        {
+            if (string.IsNullOrWhiteSpace(smtpHost))
+            {
+                return ActivatorUtilities.CreateInstance<LoggingEmailSender>(sp);
+            }
+
+            return new SmtpEmailSender(
+                smtpHost,
+                configuration.GetValue("Smtp:Port", 587),
+                configuration["Smtp:User"],
+                configuration["Smtp:Password"],
+                configuration["Smtp:From"] ?? "no-responder@rtattooai.local",
+                configuration.GetValue("Smtp:UseStartTls", true),
+                sp.GetRequiredService<ILogger<SmtpEmailSender>>());
+        });
 
         var iaServiceBaseUrl = configuration["IaService:BaseUrl"]
             ?? throw new InvalidOperationException("IaService:BaseUrl no está configurado.");
@@ -46,5 +98,36 @@ public static class DependencyInjection
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Clave AES-256 en base64 (32 bytes). Una clave mal formada aborta el arranque en
+    /// vez de degradar en silencio a "sin cifrado": creer que se cifra sin hacerlo es
+    /// peor que no cifrar.
+    /// </summary>
+    private static byte[]? ParseEncryptionKey(string? configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return null;
+        }
+
+        byte[] key;
+        try
+        {
+            key = Convert.FromBase64String(configured.Trim());
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("Storage:EncryptionKey debe estar en base64.", ex);
+        }
+
+        if (key.Length != 32)
+        {
+            throw new InvalidOperationException(
+                $"Storage:EncryptionKey debe decodificar a 32 bytes (AES-256); son {key.Length}.");
+        }
+
+        return key;
     }
 }

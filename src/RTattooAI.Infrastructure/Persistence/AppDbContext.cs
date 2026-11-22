@@ -15,8 +15,12 @@ public class AppDbContext : DbContext
     public DbSet<BandaCriminal> BandasCriminales => Set<BandaCriminal>();
     public DbSet<TatuajeCatalogo> TatuajesCatalogo => Set<TatuajeCatalogo>();
     public DbSet<Consulta> Consultas => Set<Consulta>();
+    public DbSet<ConsultaImagen> ConsultaImagenes => Set<ConsultaImagen>();
     public DbSet<Deteccion> Detecciones => Set<Deteccion>();
     public DbSet<Coincidencia> Coincidencias => Set<Coincidencia>();
+    public DbSet<RegistroAuditoria> RegistrosAuditoria => Set<RegistroAuditoria>();
+    public DbSet<VersionModelo> VersionesModelo => Set<VersionModelo>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

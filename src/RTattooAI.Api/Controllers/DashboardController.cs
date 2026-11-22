@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RTattooAI.Api.Extensions;
 using RTattooAI.Application.Abstractions;
 using RTattooAI.Application.Constants;
 
@@ -22,5 +23,13 @@ public class DashboardController : ControllerBase
     {
         var result = await _dashboardService.GetMetricsAsync(cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>Las mismas métricas del panel en CSV (RF-17).</summary>
+    [HttpGet("metrics/export")]
+    public async Task<IActionResult> ExportMetrics(CancellationToken cancellationToken)
+    {
+        var csv = await _dashboardService.ExportCsvAsync(cancellationToken);
+        return this.Csv(csv, "rtattooai-metricas");
     }
 }

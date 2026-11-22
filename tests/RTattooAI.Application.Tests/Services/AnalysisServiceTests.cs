@@ -1,10 +1,13 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using RTattooAI.Application.Abstractions;
+using RTattooAI.Application.Dtos.Analyses;
 using RTattooAI.Application.Dtos.Ia;
 using RTattooAI.Application.Exceptions;
 using RTattooAI.Application.Services;
+using RTattooAI.Application.Tests.TestData;
 using RTattooAI.Domain.Entities;
+using RTattooAI.Domain.Enums;
 using Xunit;
 
 namespace RTattooAI.Application.Tests.Services;
@@ -28,23 +31,43 @@ public class AnalysisServiceTests
         _sut = new AnalysisService(_consultaRepository.Object, _tatuajeCatalogoRepository.Object, _blobStorage.Object, _iaServiceClient.Object, _imageCropper.Object, NullLogger<AnalysisService>.Instance);
     }
 
-    private static MemoryStream CreateImageStream(int sizeBytes = 100) => new(new byte[sizeBytes]);
+    private static MemoryStream CreateImageStream() => TestImages.JpegStream();
+
+    /// <summary>Una sola imagen, que es el caso mas frecuente en estas pruebas.</summary>
+    private static IReadOnlyList<AnalysisImageInput> OneImage(
+        string fileName = "file.jpg", string contentType = "image/jpeg", long length = 100, Stream? content = null) =>
+        [new AnalysisImageInput(content ?? CreateImageStream(), fileName, contentType, length, "archivo")];
 
     [Fact]
     public async Task CreateAsync_ThrowsInvalidImageException_WhenContentTypeIsNotAllowed()
     {
         await Assert.ThrowsAsync<InvalidImageException>(() =>
-            _sut.CreateAsync(Guid.NewGuid(), CreateImageStream(), "file.txt", "text/plain", 100));
+            _sut.CreateAsync(Guid.NewGuid(), OneImage("file.txt", "text/plain", 100)));
 
         _consultaRepository.Verify(r => r.AddAsync(It.IsAny<Consulta>(), It.IsAny<CancellationToken>()), Times.Never);
         _blobStorage.Verify(b => b.UploadAsync(It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
+    public async Task CreateAsync_ThrowsPendingValidation_WhenPreviousAnalysisHasUnvalidatedDetections()
+    {
+        var usuarioId = Guid.NewGuid();
+        var pendiente = Guid.NewGuid();
+        _consultaRepository.Setup(r => r.GetUltimaPendienteDeValidarAsync(usuarioId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pendiente);
+
+        var ex = await Assert.ThrowsAsync<PendingValidationException>(() => _sut.CreateAsync(usuarioId, OneImage()));
+
+        Assert.Equal(pendiente, ex.PendingAnalysisId);
+        _consultaRepository.Verify(r => r.AddAsync(It.IsAny<Consulta>(), It.IsAny<CancellationToken>()), Times.Never);
+        _iaServiceClient.Verify(c => c.IdentifyAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task CreateAsync_ThrowsInvalidImageException_WhenFileExceedsMaxSize()
     {
         await Assert.ThrowsAsync<InvalidImageException>(() =>
-            _sut.CreateAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 11 * 1024 * 1024));
+            _sut.CreateAsync(Guid.NewGuid(), OneImage("file.jpg", "image/jpeg", 11 * 1024 * 1024)));
 
         _consultaRepository.Verify(r => r.AddAsync(It.IsAny<Consulta>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -67,7 +90,7 @@ public class AnalysisServiceTests
         _iaServiceClient.Setup(c => c.IdentifyAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(iaResult);
 
-        var dto = await _sut.CreateAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 100);
+        var dto = await _sut.CreateAsync(Guid.NewGuid(), OneImage("file.jpg", "image/jpeg", 100));
 
         Assert.NotNull(captured);
         Assert.Equal("completed", dto.Status);
@@ -85,7 +108,7 @@ public class AnalysisServiceTests
         _iaServiceClient.Setup(c => c.IdentifyAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(iaResult);
 
-        var dto = await _sut.CreateAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 100);
+        var dto = await _sut.CreateAsync(Guid.NewGuid(), OneImage("file.jpg", "image/jpeg", 100));
 
         Assert.Equal("no_detection", dto.Status);
         Assert.Empty(dto.Detections);
@@ -97,7 +120,7 @@ public class AnalysisServiceTests
         _iaServiceClient.Setup(c => c.IdentifyAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("boom"));
 
-        var dto = await _sut.CreateAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 100);
+        var dto = await _sut.CreateAsync(Guid.NewGuid(), OneImage("file.jpg", "image/jpeg", 100));
 
         Assert.Equal("failed", dto.Status);
         _consultaRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
@@ -117,7 +140,7 @@ public class AnalysisServiceTests
             .Callback(() => callOrder.Add("identify"))
             .ReturnsAsync(new IdentifyResultDto(100, 100, "v1", 10, []));
 
-        await _sut.CreateAsync(Guid.NewGuid(), CreateImageStream(), "file.jpg", "image/jpeg", 100);
+        await _sut.CreateAsync(Guid.NewGuid(), OneImage("file.jpg", "image/jpeg", 100));
 
         Assert.Equal(new[] { "add", "save", "identify", "save" }, callOrder);
     }
@@ -125,7 +148,7 @@ public class AnalysisServiceTests
     [Fact]
     public async Task GetByIdAsync_ReturnsNull_WhenConsultaDoesNotExistOrIsNotOwnedByUser()
     {
-        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Consulta?)null);
 
         var dto = await _sut.GetByIdAsync(Guid.NewGuid(), Guid.NewGuid());
@@ -168,7 +191,7 @@ public class AnalysisServiceTests
         };
         consulta.Detecciones.Add(deteccion);
 
-        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, consulta.UsuarioId, It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, (Guid?)consulta.UsuarioId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(consulta);
         _tatuajeCatalogoRepository.Setup(r => r.GetImagePathsByCodigosAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, string> { ["tat_00123"] = "catalogo/tat_00123.jpg" });
@@ -234,11 +257,14 @@ public class AnalysisServiceTests
             Estado = RTattooAI.Domain.Enums.AnalysisStatus.NoDetection
         };
 
-        _consultaRepository.Setup(r => r.GetAllByUsuarioIdAsync(usuarioId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([consultaConMatch, consultaSinMatch]);
+        _consultaRepository.Setup(r => r.GetPagedAsync(
+                (Guid?)usuarioId, It.IsAny<AnalysisHistoryQuery>(), It.IsAny<AnalysisStatus?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([consultaConMatch, consultaSinMatch], 2));
 
-        var summaries = await _sut.GetHistoryAsync(usuarioId);
+        var page = await _sut.GetHistoryAsync(usuarioId);
+        var summaries = page.Items;
 
+        Assert.Equal(2, page.Total);
         Assert.Equal(2, summaries.Count);
         Assert.Equal("Barrio 18", summaries[0].TopBand);
         Assert.Equal(0.92, summaries[0].TopSimilarity);
@@ -251,7 +277,7 @@ public class AnalysisServiceTests
     [Fact]
     public async Task EnrollDetectionsAsync_ReturnsNull_WhenAnalysisNotFoundOrNotOwnedByUser()
     {
-        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Consulta?)null);
 
         var result = await _sut.EnrollDetectionsAsync(Guid.NewGuid(), Guid.NewGuid(), [Guid.NewGuid()]);
@@ -301,17 +327,35 @@ public class AnalysisServiceTests
             ImagenOrigUrl = "consultas/1/original.jpg",
             ImagenOrigHash = "hash"
         };
+
+        // Cada deteccion se recorta de la imagen en la que aparece, no de la portada.
+        var imagen = new ConsultaImagen
+        {
+            Id = Guid.NewGuid(),
+            ConsultaId = consulta.Id,
+            Orden = 0,
+            ImagenUrl = consulta.ImagenOrigUrl,
+            ImagenHash = "hash",
+            Origen = OrigenImagen.Archivo
+        };
+        consulta.Imagenes.Add(imagen);
+
+        deteccionSeleccionada.ConsultaImagenId = imagen.Id;
+        deteccionNoSeleccionada.ConsultaImagenId = imagen.Id;
         consulta.Detecciones.Add(deteccionSeleccionada);
         consulta.Detecciones.Add(deteccionNoSeleccionada);
 
-        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, usuarioId, It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, (Guid?)usuarioId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(consulta);
         _blobStorage.Setup(b => b.DownloadAsync(consulta.ImagenOrigUrl, It.IsAny<CancellationToken>()))
             .ReturnsAsync([1, 2, 3]);
         _imageCropper.Setup(c => c.CropToPng(It.IsAny<byte[]>(), 10, 20, 100, 80))
             .Returns([9, 9, 9]);
-        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), "image/png", string.Empty, It.IsAny<CancellationToken>()))
+        _iaServiceClient.Setup(c => c.EnrollAsync(It.IsAny<Stream>(), It.IsAny<string>(), "image/png", string.Empty, "tat_00099", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnrollResultDto("tat_00099", string.Empty));
+        // El código lo decide el catálogo: con tat_00098 ocupado, se pide tat_00099.
+        _tatuajeCatalogoRepository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new TatuajeCatalogo { Codigo = "tat_00098", ImagenUrl = "x", ImagenHash = "x", Fuente = "carga_manual" }]);
 
         TatuajeCatalogo? captured = null;
         _tatuajeCatalogoRepository.Setup(r => r.AddAsync(It.IsAny<TatuajeCatalogo>(), It.IsAny<CancellationToken>()))
@@ -335,7 +379,7 @@ public class AnalysisServiceTests
     [Fact]
     public async Task ValidateDetectionAsync_ReturnsNull_WhenAnalysisNotFoundOrNotOwnedByUser()
     {
-        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Consulta?)null);
 
         var result = await _sut.ValidateDetectionAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "validated", null);
@@ -354,7 +398,7 @@ public class AnalysisServiceTests
             ImagenOrigUrl = "consultas/1/original.jpg",
             ImagenOrigHash = "hash"
         };
-        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, consulta.UsuarioId, It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, (Guid?)consulta.UsuarioId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(consulta);
 
         var result = await _sut.ValidateDetectionAsync(consulta.UsuarioId, consulta.Id, Guid.NewGuid(), "validated", null);
@@ -368,7 +412,7 @@ public class AnalysisServiceTests
         await Assert.ThrowsAsync<InvalidRequestException>(() =>
             _sut.ValidateDetectionAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "bogus", null));
 
-        _consultaRepository.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _consultaRepository.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -396,7 +440,7 @@ public class AnalysisServiceTests
         };
         consulta.Detecciones.Add(deteccion);
 
-        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, usuarioId, It.IsAny<CancellationToken>()))
+        _consultaRepository.Setup(r => r.GetByIdAsync(consulta.Id, (Guid?)usuarioId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(consulta);
 
         var dto = await _sut.ValidateDetectionAsync(usuarioId, consulta.Id, deteccion.Id, "dismissed", "  No es un tatuaje real.  ");

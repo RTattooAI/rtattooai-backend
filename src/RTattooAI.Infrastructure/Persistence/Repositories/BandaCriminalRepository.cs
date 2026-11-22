@@ -43,4 +43,35 @@ public class BandaCriminalRepository : IBandaCriminalRepository
             return await _context.BandasCriminales.SingleAsync(b => b.Nombre == nombre, cancellationToken);
         }
     }
+
+    public Task<List<BandaCriminal>> GetAllAsync(bool incluirInactivas = true, CancellationToken cancellationToken = default) =>
+        _context.BandasCriminales
+            .Where(b => incluirInactivas || b.EstaActivo)
+            .OrderBy(b => b.Nombre)
+            .ToListAsync(cancellationToken);
+
+    public Task<BandaCriminal?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        _context.BandasCriminales.SingleOrDefaultAsync(b => b.Id == id, cancellationToken);
+
+    public Task<BandaCriminal?> GetByNombreAsync(string nombre, CancellationToken cancellationToken = default) =>
+        _context.BandasCriminales.SingleOrDefaultAsync(b => b.Nombre == nombre, cancellationToken);
+
+    public async Task<Dictionary<Guid, int>> CountTatuajesPorBandaAsync(CancellationToken cancellationToken = default)
+    {
+        var conteos = await _context.TatuajesCatalogo
+            .Where(t => t.BandaId != null)
+            .GroupBy(t => t.BandaId!.Value)
+            .Select(g => new { BandaId = g.Key, Total = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        return conteos.ToDictionary(c => c.BandaId, c => c.Total);
+    }
+
+    public async Task AddAsync(BandaCriminal banda, CancellationToken cancellationToken = default) =>
+        await _context.BandasCriminales.AddAsync(banda, cancellationToken);
+
+    public void Remove(BandaCriminal banda) => _context.BandasCriminales.Remove(banda);
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        _context.SaveChangesAsync(cancellationToken);
 }

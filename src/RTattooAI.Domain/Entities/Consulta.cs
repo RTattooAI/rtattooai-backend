@@ -7,6 +7,11 @@ public class Consulta
     public Guid Id { get; set; }
     public Guid UsuarioId { get; set; }
     public required string Codigo { get; set; }
+    /// <summary>
+    /// Portada del análisis: copia denormalizada de la primera imagen (<see cref="Imagenes"/>
+    /// con Orden = 0). Se conserva para que el historial, la miniatura y los reportes no
+    /// tengan que cargar la colección completa.
+    /// </summary>
     public required string ImagenOrigUrl { get; set; }
     public string? ImagenMiniaturaUrl { get; set; }
     public required string ImagenOrigHash { get; set; }
@@ -27,5 +32,10 @@ public class Consulta
     public string? PersonaDocumento { get; set; }
 
     public Usuario? Usuario { get; set; }
+
+    /// <summary>Fotografías que componen el análisis, en orden de carga.</summary>
+    public ICollection<ConsultaImagen> Imagenes { get; set; } = [];
+
+    /// <summary>Todas las detecciones del análisis, de todas sus imágenes.</summary>
     public ICollection<Deteccion> Detecciones { get; set; } = [];
 }

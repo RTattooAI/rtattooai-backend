@@ -8,4 +8,5 @@ public record AnalysisSummaryDto(
     string? TopBand,
     double? TopSimilarity,
     string? PersonName,
-    string? DocumentId);
+    string? DocumentId,
+    int ImageCount);
